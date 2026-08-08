@@ -8,6 +8,7 @@ This repository now includes a Chrome extension at:
 
 ### What it does
 - Detects customer mobile number from WhatsApp Web (chat click or number-based URL).
+- Auto-fetches pending data on chat click with debounce + retry for more reliable detection.
 - Sends the mobile number to the Apps Script API.
 - Shows customer outstanding amount + pending bill details + due days in a side panel.
 - Provides **Generate** (reminder text) and **Send Reminder** (opens WhatsApp draft) buttons.

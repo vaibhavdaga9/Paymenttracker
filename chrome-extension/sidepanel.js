@@ -1,5 +1,8 @@
 var latestPayload = null;
 var detectedPhone = '';
+var autoFetchDebounceTimer = null;
+var lastAutoFetchedPhone = '';
+var activeFetchToken = 0;
 
 function formatCurrency(amount) {
   return '₹' + (Number(amount) || 0).toLocaleString('en-IN');
@@ -57,21 +60,36 @@ function renderResult(payload) {
   result.classList.remove('hidden');
 }
 
-async function fetchPending() {
+async function fetchPendingWithRetry(options) {
+  var opts = options || {};
   var apiUrl = document.getElementById('apiUrl').value.trim();
   var mobile = normalizePhone(document.getElementById('mobileInput').value);
+  var retries = typeof opts.retries === 'number' ? opts.retries : 0;
+  var attempt = typeof opts.attempt === 'number' ? opts.attempt : 0;
+  var showLoading = opts.showLoading !== false;
+  var token = ++activeFetchToken;
 
   if (!apiUrl) return setStatus('Save Apps Script API URL first.', true);
   if (!mobile) return setStatus('Enter a valid 10-digit mobile number.', true);
 
-  setStatus('Loading...');
-  renderResult(null);
+  if (showLoading) {
+    setStatus('Loading...');
+    renderResult(null);
+  }
 
   try {
     var url = apiUrl + '?action=customer_by_mobile&mobile=' + encodeURIComponent(mobile);
     var res = await fetch(url);
     var data = await res.json();
+    if (token !== activeFetchToken) return;
     if (!data.success) {
+      if (attempt < retries) {
+        setStatus('Retrying... (' + (attempt + 1) + '/' + retries + ')', false);
+        setTimeout(function() {
+          fetchPendingWithRetry({ retries: retries, attempt: attempt + 1, showLoading: false });
+        }, 500 * (attempt + 1));
+        return;
+      }
       setStatus(data.message || 'Failed to fetch pending data.', true);
       return;
     }
@@ -82,8 +100,19 @@ async function fetchPending() {
     renderResult(data);
     setStatus('Loaded ' + (data.pendingBills || []).length + ' pending bill(s).');
   } catch (err) {
+    if (attempt < retries) {
+      setStatus('Network issue, retrying... (' + (attempt + 1) + '/' + retries + ')', false);
+      setTimeout(function() {
+        fetchPendingWithRetry({ retries: retries, attempt: attempt + 1, showLoading: false });
+      }, 500 * (attempt + 1));
+      return;
+    }
     setStatus('Fetch failed: ' + err.message, true);
   }
+}
+
+function fetchPending() {
+  fetchPendingWithRetry({ retries: 2, attempt: 0, showLoading: true });
 }
 
 function generateMessage() {
@@ -131,11 +160,27 @@ function useDetected() {
   fetchPending();
 }
 
+function scheduleAutoFetchForDetectedPhone() {
+  if (!detectedPhone) return;
+  if (autoFetchDebounceTimer) clearTimeout(autoFetchDebounceTimer);
+  autoFetchDebounceTimer = setTimeout(function() {
+    var apiUrl = document.getElementById('apiUrl').value.trim();
+    if (!apiUrl) return;
+    if (detectedPhone === lastAutoFetchedPhone) return;
+    document.getElementById('mobileInput').value = detectedPhone;
+    lastAutoFetchedPhone = detectedPhone;
+    fetchPendingWithRetry({ retries: 2, attempt: 0, showLoading: true });
+  }, 350);
+}
+
 function boot() {
   chrome.storage.local.get(['appsScriptApiUrl', 'lastDetectedPhone'], function(data) {
     document.getElementById('apiUrl').value = data.appsScriptApiUrl || '';
     detectedPhone = normalizePhone(data.lastDetectedPhone || '');
-    if (detectedPhone) document.getElementById('mobileInput').value = detectedPhone;
+    if (detectedPhone) {
+      document.getElementById('mobileInput').value = detectedPhone;
+      scheduleAutoFetchForDetectedPhone();
+    }
     setDetectedInfo();
   });
 
@@ -144,6 +189,7 @@ function boot() {
     detectedPhone = normalizePhone(message.phone || '');
     if (detectedPhone) {
       document.getElementById('mobileInput').value = detectedPhone;
+      scheduleAutoFetchForDetectedPhone();
     }
     setDetectedInfo();
   });

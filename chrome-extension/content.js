@@ -1,5 +1,7 @@
 (function() {
   var lastSentPhone = '';
+  var detectDebounceTimer = null;
+  var retryTimers = [];
 
   function normalizePhone(input) {
     if (!input) return '';
@@ -62,11 +64,39 @@
     });
   }
 
+  function scheduleDetect(delayMs) {
+    if (detectDebounceTimer) clearTimeout(detectDebounceTimer);
+    detectDebounceTimer = setTimeout(sendIfChanged, delayMs || 250);
+  }
+
+  function scheduleRetryDetect() {
+    retryTimers.forEach(function(t) { clearTimeout(t); });
+    retryTimers = [300, 900, 1800].map(function(delay) {
+      return setTimeout(sendIfChanged, delay);
+    });
+  }
+
+  function handleChatInteraction() {
+    scheduleDetect(200);
+    scheduleRetryDetect();
+  }
+
   sendIfChanged();
   setInterval(sendIfChanged, 1500);
 
   var observer = new MutationObserver(function() {
-    sendIfChanged();
+    scheduleDetect(180);
   });
   observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
+
+  document.addEventListener('click', function(evt) {
+    var t = evt.target;
+    if (!t) return;
+    var chatItem = t.closest('[role="listitem"], [data-tab], [aria-selected], header');
+    if (chatItem) handleChatInteraction();
+  }, true);
+
+  window.addEventListener('popstate', function() {
+    handleChatInteraction();
+  });
 })();
