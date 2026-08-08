@@ -1,0 +1,80 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #f7f7f8;
+  color: #111827;
+}
+
+main {
+  padding: 12px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 12px 0;
+}
+
+h2 {
+  margin: 12px 0 8px;
+  font-size: 14px;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  margin: 8px 0 4px;
+}
+
+input, textarea, button {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 6px;
+}
+
+input, textarea {
+  border: 1px solid #d1d5db;
+  padding: 8px;
+  background: #fff;
+}
+
+button {
+  border: none;
+  padding: 9px 10px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+  margin: 10px 0;
+  line-height: 1.6;
+}
+
+.bill {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.muted {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.hidden {
+  display: none;
+}

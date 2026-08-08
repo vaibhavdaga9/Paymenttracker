@@ -121,7 +121,12 @@ function setupSheets() {
 // ============================================================
 // WEB APP ENTRY POINTS
 // ============================================================
-function doGet() {
+function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action).trim().toLowerCase() : '';
+  if (action === 'customer_by_mobile') {
+    return getCustomerPendingByMobileApi_(e);
+  }
+
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Payment Tracker')
@@ -130,6 +135,82 @@ function doGet() {
 
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function jsonResponse_(payload) {
+  return ContentService
+    .createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getCustomerPendingByMobileApi_(e) {
+  try {
+    var rawMobile = (e && e.parameter && (e.parameter.mobile || e.parameter.phone)) ? String(e.parameter.mobile || e.parameter.phone) : '';
+    var mobile = normalizeMobileNumber(rawMobile);
+    if (!mobile) {
+      return jsonResponse_({ success: false, message: 'Enter a valid 10-digit mobile number.' });
+    }
+
+    runCustomerIdBackfillIfNeeded();
+    var payments = getAllPayments();
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    var pending = payments.filter(function(p) {
+      var pm = normalizeMobileNumber(p.mobile || '');
+      var status = p.status ? String(p.status).trim().toLowerCase() : '';
+      return pm === mobile && status !== 'received';
+    });
+
+    if (pending.length === 0) {
+      return jsonResponse_({
+        success: true,
+        mobile: mobile,
+        found: false,
+        customerName: '',
+        customerId: '',
+        outstandingAmount: 0,
+        pendingBills: [],
+        message: 'No pending bills found for this mobile number.'
+      });
+    }
+
+    var total = 0;
+    var customerName = pending[0].clientName || '';
+    var customerId = pending[0].customerId || '';
+    var bills = pending.map(function(p) {
+      var amt = Number(p.amount) || 0;
+      total += amt;
+
+      var dueDays = 0;
+      if (p.nextCallDate) {
+        var dueDate = new Date(p.nextCallDate);
+        dueDate.setHours(0, 0, 0, 0);
+        dueDays = Math.floor((today.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000));
+      }
+
+      return {
+        rowIndex: p.rowIndex,
+        remarks: p.remarks || '',
+        amount: amt,
+        invoiceDate: p.date || '',
+        dueDate: p.nextCallDate || '',
+        dueDays: dueDays > 0 ? dueDays : 0
+      };
+    });
+
+    return jsonResponse_({
+      success: true,
+      found: true,
+      mobile: mobile,
+      customerName: customerName,
+      customerId: customerId,
+      outstandingAmount: total,
+      pendingBills: bills
+    });
+  } catch (err) {
+    return jsonResponse_({ success: false, message: 'Error: ' + err.message });
+  }
 }
 
 function normalizeMobileNumber(mobile) {

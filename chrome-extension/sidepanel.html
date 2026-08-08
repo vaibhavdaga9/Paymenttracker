@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PaymentTracker Panel</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main>
+      <h1>PaymentTracker</h1>
+
+      <label>Apps Script API URL</label>
+      <input id="apiUrl" type="text" placeholder="https://script.google.com/macros/s/.../exec">
+      <button id="saveApiBtn">Save API URL</button>
+
+      <label>Customer Mobile Number</label>
+      <input id="mobileInput" type="text" placeholder="10-digit mobile number">
+      <div class="row">
+        <button id="useDetectedBtn">Use Detected</button>
+        <button id="fetchBtn">Fetch Pending</button>
+      </div>
+      <p id="detectedInfo" class="muted"></p>
+
+      <section id="result" class="hidden">
+        <div class="card">
+          <div><strong>Customer:</strong> <span id="customerName"></span></div>
+          <div><strong>Customer ID:</strong> <span id="customerId"></span></div>
+          <div><strong>Outstanding:</strong> <span id="outstanding"></span></div>
+        </div>
+        <div>
+          <h2>Pending Bills</h2>
+          <div id="bills"></div>
+        </div>
+        <div class="row">
+          <button id="generateBtn">Generate</button>
+          <button id="sendBtn">Send Reminder</button>
+        </div>
+        <textarea id="message" rows="8" placeholder="Generated reminder message will appear here"></textarea>
+      </section>
+
+      <p id="status" class="muted"></p>
+    </main>
+    <script src="sidepanel.js"></script>
+  </body>
+  </html>
