@@ -1,0 +1,1385 @@
+// ============================================================
+// Payment Tracker - Google Apps Script
+// Sheet ID: 1yy08MQN46IdIYb2wPngeXs0sHIjzl56_vr6gDWOTbl4
+// ============================================================
+
+var SHEET_ID = '1yy08MQN46IdIYb2wPngeXs0sHIjzl56_vr6gDWOTbl4';
+var DATA_SHEET_NAME = 'Payments';
+var LOOKUP_SHEET_NAME = 'Lookups';
+var MANAGER_SHEET_NAME = 'Managers';
+var MANAGER_EMAIL = 'dagamarketing@gmail.com';
+var MANAGER_WHATSAPP = '919737299683';
+
+// Column indices (1-based)
+var COL_DATE = 1;
+var COL_COMPANY = 2;
+var COL_CLIENT_NAME = 3;
+var COL_MOBILE = 4;
+var COL_AMOUNT = 5;
+var COL_REMARKS = 6;
+var COL_DATE_GIVEN = 7;
+var COL_NEXT_CALL_DATE = 8;
+var COL_REMINDER = 9;
+
+// ============================================================
+// SETUP: Initialize sheets with headers
+// ============================================================
+function setupSheets() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var log = [];
+
+  // Setup Payments sheet
+  var paymentSheet = ss.getSheetByName(DATA_SHEET_NAME);
+  if (!paymentSheet) {
+    paymentSheet = ss.insertSheet(DATA_SHEET_NAME);
+    log.push('✓ Created Payments sheet');
+  } else {
+    log.push('• Payments sheet already exists');
+  }
+  if (paymentSheet.getLastRow() === 0) {
+    // Actual sheet layout (9 cols) used by the app
+    paymentSheet.appendRow([
+      'Date', 'Client Name', 'Mobile No', 'Amount', 'Remarks',
+      'Called On', 'Next Call Date', 'Status', 'Manager'
+    ]);
+    paymentSheet.getRange(1, 1, 1, 9).setFontWeight('bold').setBackground('#4a90d9').setFontColor('#ffffff');
+    paymentSheet.setFrozenRows(1);
+    log.push('✓ Added Payments headers (9-col layout with Manager)');
+  } else {
+    // Ensure Status column H exists for existing sheets
+    var headerH = paymentSheet.getRange(1, 8).getValue();
+    if (!headerH || String(headerH).trim() === '') {
+      paymentSheet.getRange(1, 8).setValue('Status').setFontWeight('bold').setBackground('#4a90d9').setFontColor('#ffffff');
+      log.push('✓ Added Status column (H)');
+    }
+    var headerI = paymentSheet.getRange(1, 9).getValue();
+    if (!headerI || String(headerI).trim() === '') {
+      paymentSheet.getRange(1, 9).setValue('Manager').setFontWeight('bold').setBackground('#4a90d9').setFontColor('#ffffff');
+      log.push('✓ Added Manager column (I)');
+    } else {
+      log.push('• Manager column (I) already present');
+    }
+  }
+
+  // Setup Managers sheet — explicit + logged
+  var managerSheet = ss.getSheetByName(MANAGER_SHEET_NAME);
+  if (!managerSheet) {
+    managerSheet = ss.insertSheet(MANAGER_SHEET_NAME);
+    managerSheet.appendRow(['Manager Name', 'Mobile Number']);
+    managerSheet.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#7c3aed').setFontColor('#ffffff');
+    managerSheet.setFrozenRows(1);
+    // Set column widths so it's easy to read
+    managerSheet.setColumnWidth(1, 220);
+    managerSheet.setColumnWidth(2, 180);
+    log.push('✓ Created Managers sheet (with headers)');
+  } else {
+    log.push('• Managers sheet already exists');
+  }
+  SpreadsheetApp.flush();
+
+  // Setup Lookups sheet
+  var lookupSheet = ss.getSheetByName(LOOKUP_SHEET_NAME);
+  if (!lookupSheet) {
+    lookupSheet = ss.insertSheet(LOOKUP_SHEET_NAME);
+    lookupSheet.appendRow(['Companies', 'Clients', 'Mobiles', 'PartyCompany', 'PartyClient', 'PartyMobile']);
+    lookupSheet.getRange(1, 1, 1, 6).setFontWeight('bold').setBackground('#e8f4fd');
+    log.push('✓ Created Lookups sheet');
+  }
+
+  var msg = 'Setup complete! ' + log.join('  |  ');
+  Logger.log(msg);
+  return msg;
+}
+
+// ============================================================
+// WEB APP ENTRY POINTS
+// ============================================================
+function doGet() {
+  return HtmlService.createTemplateFromFile('Index')
+    .evaluate()
+    .setTitle('Payment Tracker')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// ============================================================
+// DAYBOOK IMPORT: Parse and filter Tally daybook
+// ============================================================
+function parseDaybookData(base64FileData, fileName) {
+  try {
+    var bytes = Utilities.base64Decode(base64FileData);
+    var isXlsx = bytes.length >= 4 &&
+                 bytes[0] === 0x50 && bytes[1] === 0x4B &&
+                 bytes[2] === 0x03 && bytes[3] === 0x04;
+
+    var data;
+    var tempFileId = null;
+
+    if (isXlsx) {
+      var xlsxBlob = Utilities.newBlob(
+        bytes,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'temp_daybook_' + new Date().getTime() + '.xlsx'
+      );
+
+      var tempFile = Drive.Files.insert(
+        {
+          title: 'temp_daybook_' + new Date().getTime(),
+          mimeType: MimeType.GOOGLE_SHEETS
+        },
+        xlsxBlob,
+        { convert: true }
+      );
+      tempFileId = tempFile.id;
+
+      var ss = SpreadsheetApp.openById(tempFileId);
+      var sheet = ss.getSheets()[0];
+      data = sheet.getDataRange().getValues();
+
+      try { DriveApp.getFileById(tempFileId).setTrashed(true); } catch (eCleanup) {}
+    } else {
+      var csvText = Utilities.newBlob(bytes).getDataAsString();
+      data = Utilities.parseCsv(csvText);
+    }
+    
+    var headerRowIdx = -1;
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      var a = row[0] ? String(row[0]).toLowerCase() : '';
+      var b = row[1] ? String(row[1]).toLowerCase() : '';
+      if (a.indexOf('date') > -1 && b.indexOf('particular') > -1) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) {
+      return { success: false, error: 'Could not find header row. Ensure file has columns: Date, Particulars, Vch Type, Vch No., Debit Amount, Credit Amount' };
+    }
+
+    var filtered = [];
+
+    for (var i = headerRowIdx + 2; i < data.length; i++) {
+      var row = data[i];
+
+      var dateRaw = row[0];
+      var invoiceDate = '';
+      if (dateRaw) {
+        if (typeof dateRaw === 'object' && dateRaw instanceof Date) {
+          invoiceDate = Utilities.formatDate(dateRaw, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        } else {
+          var parsed = new Date(dateRaw);
+          if (!isNaN(parsed.getTime())) {
+            invoiceDate = Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+          }
+        }
+      }
+      if (!invoiceDate) continue;
+
+      var partyName = row[1] ? String(row[1]).trim() : '';
+      if (!partyName) continue;
+
+      var vchType = row[2] ? String(row[2]).trim() : '';
+
+      var invoiceNo = row[3] ? String(row[3]).trim() : '';
+      if (!invoiceNo) continue;
+
+      var amount = row[4] ? Number(row[4]) : 0;
+      if (!amount || amount <= 0) continue;
+
+      filtered.push({
+        invoiceDate: invoiceDate,
+        partyName: partyName,
+        invoiceNo: invoiceNo,
+        amount: amount,
+        voucherType: vchType
+      });
+    }
+
+    if (filtered.length === 0) {
+      return { success: false, error: 'No valid invoices found. Each data row must have Date (A), Client Name (B), Invoice No. (D), and Amount (E) > 0.' };
+    }
+
+    return { success: true, invoices: filtered, count: filtered.length };
+  } catch (e) {
+    return { success: false, error: 'Error parsing file: ' + e.message };
+  }
+}
+
+// ============================================================
+// DAYBOOK IMPORT: Get preview
+// ============================================================
+function getDaybookPreview(base64FileData) {
+  try {
+    var parseResult = parseDaybookData(base64FileData, '');
+    if (!parseResult.success) {
+      return { success: false, error: parseResult.error };
+    }
+
+    var invoices = parseResult.invoices || [];
+
+    // Build client → {manager, mobile} map from existing Payments rows so the
+    // preview can prefill mobile + apply manager-based default days.
+    // Also build a set of ALL existing invoice numbers (extracted from Remarks)
+    // so we can flag duplicates before import.
+    var existingInfoByClient = {};
+    var existingInvoiceNos = {}; // set-like map { "INV001": true }
+    try {
+      var ss = SpreadsheetApp.openById(SHEET_ID);
+      var pSheet = ss.getSheetByName(DATA_SHEET_NAME);
+      if (pSheet && pSheet.getLastRow() > 1) {
+        // Cols 2..9 = B..I → 8 cols. index 0 = Client, index 1 = Mobile, index 3 = Remarks, index 7 = Manager
+        var rows = pSheet.getRange(2, 2, pSheet.getLastRow() - 1, 8).getValues();
+        rows.forEach(function(r) {
+          var nm = r[0] ? String(r[0]).trim().toUpperCase() : '';
+          if (!nm) return;
+          var mob = r[1] ? String(r[1]).trim() : '';
+          var remarks = r[3] ? String(r[3]) : '';
+          var mgr = r[7] ? String(r[7]).trim() : '';
+          if (!existingInfoByClient[nm]) existingInfoByClient[nm] = { manager: '', mobile: '' };
+          if (mgr && !existingInfoByClient[nm].manager) existingInfoByClient[nm].manager = mgr;
+          if (mob && !existingInfoByClient[nm].mobile) existingInfoByClient[nm].mobile = mob;
+          // Extract invoice numbers from the Remarks field (format: "Invoices: A, B, C (TAX)")
+          extractInvoiceNos(remarks).forEach(function(no) {
+            existingInvoiceNos[no.toUpperCase()] = true;
+          });
+        });
+      }
+    } catch (eLookup) { /* silent */ }
+
+    var preview = [];
+    var totalAmount = 0;
+    var duplicateCount = 0;
+
+    invoices.forEach(function(inv) {
+      var key = String(inv.partyName || '').trim().toUpperCase();
+      var info = existingInfoByClient[key] || { manager: '', mobile: '' };
+      var mUpper = info.manager.toUpperCase();
+      var paymentDays = (mUpper === 'VIPUL' || mUpper === 'SHRAVAN') ? 15 : 30;
+
+      var invoiceDate = new Date(inv.invoiceDate);
+      var nextCallDate = new Date(invoiceDate);
+      nextCallDate.setDate(nextCallDate.getDate() + paymentDays);
+      var nextCallStr = Utilities.formatDate(nextCallDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+      var invNoKey = String(inv.invoiceNo || '').trim().toUpperCase();
+      var isDup = invNoKey && existingInvoiceNos[invNoKey] === true;
+      if (isDup) duplicateCount++;
+
+      preview.push({
+        invoiceDate: inv.invoiceDate,
+        partyName: inv.partyName,
+        invoiceNo: inv.invoiceNo,
+        amount: inv.amount,
+        voucherType: inv.voucherType,
+        mobile: info.mobile,
+        manager: info.manager,
+        paymentDays: paymentDays,
+        nextCallDate: nextCallStr,
+        isDuplicate: isDup
+      });
+
+      totalAmount += inv.amount;
+    });
+
+    return {
+      success: true,
+      invoices: preview,
+      totalInvoices: preview.length,
+      totalAmount: totalAmount,
+      duplicateCount: duplicateCount,
+      managers: getManagers()   // supply managers list so preview UI can render the Manager dropdown
+    };
+  } catch (e) {
+    return { success: false, error: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// Helper: parse invoice numbers out of a Remarks string
+// Expected format: "Invoices: INV001, INV002, INV003 (TAX INVOICE)"
+// ============================================================
+function extractInvoiceNos(remarks) {
+  if (!remarks) return [];
+  var s = String(remarks);
+  var m = s.match(/Invoices?\s*:\s*([^(]+)/i);
+  if (!m) return [];
+  return m[1].split(',').map(function(x) { return x.trim(); }).filter(function(x) { return x; });
+}
+
+// ============================================================
+// DAYBOOK IMPORT: Import invoices
+// ============================================================
+function importDaybookInvoices(base64FileData) {
+  try {
+    var parseResult = parseDaybookData(base64FileData, '');
+    if (!parseResult.success) {
+      return { success: false, error: parseResult.error };
+    }
+    
+    var invoices = parseResult.invoices || [];
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var paymentSheet = ss.getSheetByName(DATA_SHEET_NAME);
+    
+    var imported = 0;
+    var errors = [];
+    
+    invoices.forEach(function(inv) {
+      try {
+        var paymentDays = 30;
+        
+        var invoiceDate = new Date(inv.invoiceDate);
+        var nextCallDate = new Date(invoiceDate);
+        nextCallDate.setDate(nextCallDate.getDate() + paymentDays);
+        var nextCallStr = Utilities.formatDate(nextCallDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        
+        // 9-col layout: Date | Client | Mobile | Amount | Remarks | Called On | Next Call | Status | Manager
+        paymentSheet.appendRow([
+          inv.invoiceDate,
+          inv.partyName,
+          '',
+          inv.amount,
+          'Invoice: ' + inv.invoiceNo + ' (' + inv.voucherType + ')',
+          inv.invoiceDate,
+          nextCallStr,
+          'Pending',
+          ''
+        ]);
+        
+        imported++;
+      } catch (e) {
+        errors.push(inv.invoiceNo + ': ' + e.message);
+      }
+    });
+    
+    return {
+      success: true,
+      message: 'Imported ' + imported + ' invoices successfully!',
+      imported: imported,
+      total: invoices.length,
+      errors: errors
+    };
+  } catch (e) {
+    return { success: false, error: 'Import error: ' + e.message };
+  }
+}
+
+// ============================================================
+// DAYBOOK IMPORT: Save grouped/edited preview
+// ============================================================
+function importDaybookGrouped(groupedInvoices) {
+  try {
+    if (!groupedInvoices || !groupedInvoices.length) {
+      return { success: false, error: 'No invoices to import.' };
+    }
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var paymentSheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!paymentSheet) {
+      setupSheets();
+      paymentSheet = ss.getSheetByName(DATA_SHEET_NAME);
+    }
+    
+    var imported = 0;
+    var errors = [];
+
+    // Build a client → manager map from existing rows so newly imported invoices
+    // for the SAME client automatically inherit the manager already assigned.
+    // Also build a set of ALL existing invoice numbers so we skip duplicates.
+    // Sheet layout: Client=col 2, Manager=col 9. Read cols 2..9 (8 columns).
+    var existingMgrByClient = {};
+    var existingInvoiceNos = {};
+    if (paymentSheet.getLastRow() > 1) {
+      var existing = paymentSheet.getRange(2, 2, paymentSheet.getLastRow() - 1, 8).getValues();
+      // Within this slice: index 0 = Client, index 3 = Remarks, index 7 = Manager
+      existing.forEach(function(r) {
+        var nm = r[0] ? String(r[0]).trim().toUpperCase() : '';
+        var mgr = r[7] ? String(r[7]).trim() : '';
+        if (nm && mgr && !existingMgrByClient[nm]) existingMgrByClient[nm] = mgr;
+        var rem = r[3] ? String(r[3]) : '';
+        extractInvoiceNos(rem).forEach(function(no) {
+          existingInvoiceNos[no.toUpperCase()] = true;
+        });
+      });
+    }
+
+    var duplicatesSkipped = [];
+
+    groupedInvoices.forEach(function(g) {
+      try {
+        var partyName = String(g.partyName || '').trim();
+        if (!partyName) { errors.push('Skipped: empty party name'); return; }
+
+        // Mobile: prefer what user typed/edited in preview, else auto-inherit from existing rows for this client
+        var mobile = (g.mobile && String(g.mobile).trim()) || '';
+
+        // Manager: prefer user's selection from preview dropdown; else auto-inherit existing assignment for this client
+        var chosenMgr = (g.manager && String(g.manager).trim()) || '';
+        var inheritedMgr = chosenMgr || existingMgrByClient[partyName.toUpperCase()] || '';
+
+        var mgrKey = inheritedMgr.toUpperCase();
+        var isShortCycleMgr = (mgrKey === 'VIPUL' || mgrKey === 'SHRAVAN');
+        var paymentDays = Number(g.paymentDays);
+        if (!paymentDays || paymentDays < 1) paymentDays = isShortCycleMgr ? 15 : 30;
+        else if (isShortCycleMgr && paymentDays === 30) paymentDays = 15;
+
+        // ============================================================
+        // Each invoice becomes its OWN row in Records (no grouping)
+        // Uses g.invoices (array of {invoiceNo, amount, invoiceDate, voucherType})
+        // Falls back to synthesized data from legacy g.invoiceNos if array missing.
+        // ============================================================
+        var invoicesList = (g.invoices && g.invoices.length) ? g.invoices : (
+          (g.invoiceNos || []).map(function(no) {
+            return {
+              invoiceNo: no,
+              amount: (Number(g.totalAmount) / (g.invoiceNos.length || 1)) || 0,
+              invoiceDate: g.invoiceDate,
+              voucherType: (g.voucherTypes && g.voucherTypes[0]) || ''
+            };
+          })
+        );
+
+        invoicesList.forEach(function(inv) {
+          var invNoKey = String(inv.invoiceNo || '').trim().toUpperCase();
+          if (invNoKey && existingInvoiceNos[invNoKey]) {
+            duplicatesSkipped.push({ partyName: partyName, invoiceNos: [inv.invoiceNo] });
+            return;
+          }
+
+          // Prefer per-invoice partyName if provided by frontend (defensive: prevents
+          // a grouping mismatch from writing the wrong name against an amount).
+          var rowPartyName = (inv.partyName && String(inv.partyName).trim()) || partyName;
+
+          var invDate = new Date(inv.invoiceDate || g.invoiceDate);
+          if (isNaN(invDate.getTime())) invDate = new Date();
+          var invDateStr = Utilities.formatDate(invDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+          var nextCallDate = new Date(invDate);
+          nextCallDate.setDate(nextCallDate.getDate() + paymentDays);
+          var nextCallStr = Utilities.formatDate(nextCallDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+          var vchType = inv.voucherType || (g.voucherTypes && g.voucherTypes[0]) || '';
+          var remarks = 'Invoice: ' + (inv.invoiceNo || '-') + (vchType ? ' (' + vchType + ')' : '');
+
+          // 9-col layout: Date | Client | Mobile | Amount | Remarks | Called On | Next Call | Status | Manager
+          paymentSheet.appendRow([
+            invDateStr,
+            rowPartyName,
+            mobile,
+            Number(inv.amount) || 0,
+            remarks,
+            invDateStr,
+            nextCallStr,
+            'Pending',
+            inheritedMgr
+          ]);
+
+          if (invNoKey) existingInvoiceNos[invNoKey] = true;
+          imported++;
+        });
+      } catch (e) {
+        errors.push((g && g.partyName ? g.partyName : 'row') + ': ' + e.message);
+      }
+    });
+
+    return {
+      success: true,
+      message: 'Imported ' + imported + ' customers successfully!' + (duplicatesSkipped.length > 0 ? ' (' + duplicatesSkipped.length + ' duplicate group(s) skipped or trimmed)' : ''),
+      imported: imported,
+      total: groupedInvoices.length,
+      errors: errors,
+      duplicatesSkipped: duplicatesSkipped
+    };
+  } catch (e) {
+    return { success: false, error: 'Import error: ' + e.message };
+  }
+}
+
+// ============================================================
+// RECEIPT IMPORT: Parse receipts
+// ============================================================
+function parseReceiptData(base64FileData) {
+  try {
+    var bytes = Utilities.base64Decode(base64FileData);
+    var isXlsx = bytes.length >= 4 &&
+                 bytes[0] === 0x50 && bytes[1] === 0x4B &&
+                 bytes[2] === 0x03 && bytes[3] === 0x04;
+    var data;
+    var tempFileId = null;
+
+    if (isXlsx) {
+      var xlsxBlob = Utilities.newBlob(
+        bytes,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'temp_receipt_' + new Date().getTime() + '.xlsx'
+      );
+      var tempFile = Drive.Files.insert(
+        { title: 'temp_receipt_' + new Date().getTime(), mimeType: MimeType.GOOGLE_SHEETS },
+        xlsxBlob,
+        { convert: true }
+      );
+      tempFileId = tempFile.id;
+      var ss = SpreadsheetApp.openById(tempFileId);
+      var sheet = ss.getSheets()[0];
+      data = sheet.getDataRange().getValues();
+      try { DriveApp.getFileById(tempFileId).setTrashed(true); } catch (eCleanup) {}
+    } else {
+      var csvText = Utilities.newBlob(bytes).getDataAsString();
+      data = Utilities.parseCsv(csvText);
+    }
+
+    var headerRowIdx = -1;
+    for (var i = 0; i < data.length; i++) {
+      var a = data[i][0] ? String(data[i][0]).toLowerCase() : '';
+      var b = data[i][1] ? String(data[i][1]).toLowerCase() : '';
+      if (a.indexOf('date') > -1 && b.indexOf('particular') > -1) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+    if (headerRowIdx === -1) {
+      return { success: false, error: 'Could not find header row. Receipt file must have columns: Date, Particulars, Vch Type, Vch No., Debit, Credit.' };
+    }
+
+    var receipts = [];
+    for (var i = headerRowIdx + 2; i < data.length; i++) {
+      var row = data[i];
+
+      var dRaw = row[0];
+      var rDate = '';
+      if (dRaw) {
+        if (typeof dRaw === 'object' && dRaw instanceof Date) {
+          rDate = Utilities.formatDate(dRaw, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        } else {
+          var p = new Date(dRaw);
+          if (!isNaN(p.getTime())) {
+            rDate = Utilities.formatDate(p, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+          }
+        }
+      }
+      if (!rDate) continue;
+
+      var clientName = row[1] ? String(row[1]).trim() : '';
+      if (!clientName) continue;
+
+      var amount = row[5] ? Number(row[5]) : 0;
+      if (!amount || amount <= 0) continue;
+
+      receipts.push({ receiptDate: rDate, clientName: clientName, amount: amount });
+    }
+
+    if (receipts.length === 0) {
+      return { success: false, error: 'No valid receipt rows found. Each row must have Date (A), Client Name (B), and Credit Amount (F) > 0.' };
+    }
+    return { success: true, receipts: receipts };
+  } catch (e) {
+    return { success: false, error: 'Error parsing receipt file: ' + e.message };
+  }
+}
+
+// ============================================================
+// RECEIPT IMPORT: Get preview
+// ============================================================
+function getReceiptPreview(base64FileData) {
+  try {
+    var parsed = parseReceiptData(base64FileData);
+    if (!parsed.success) return { success: false, error: parsed.error };
+
+    var receipts = parsed.receipts;
+
+    var byClient = {};
+    receipts.forEach(function(r) {
+      var key = r.clientName.toUpperCase();
+      if (!byClient[key]) {
+        byClient[key] = {
+          clientName: r.clientName,
+          totalReceived: 0,
+          latestReceiptDate: r.receiptDate,
+          rawReceipts: []
+        };
+      }
+      byClient[key].totalReceived += r.amount;
+      byClient[key].rawReceipts.push(r);
+      if (new Date(r.receiptDate) > new Date(byClient[key].latestReceiptDate)) {
+        byClient[key].latestReceiptDate = r.receiptDate;
+      }
+    });
+
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    var pendingByClient = {};
+    if (sheet && sheet.getLastRow() > 1) {
+      // 9-col sheet: A=Date, B=Client, C=Mobile, D=Amount, E=Remarks, F=Called On, G=Next Call, H=Status, I=Manager
+      var allRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+      allRows.forEach(function(r, idx) {
+        var status = r[7] ? String(r[7]).trim().toLowerCase() : '';
+        if (status === 'received') return;
+        var name = r[1] ? String(r[1]).trim() : '';
+        if (!name) return;
+        var amt = Number(r[3]) || 0;
+        if (amt <= 0) return;
+        var key = name.toUpperCase();
+        if (!pendingByClient[key]) pendingByClient[key] = { totalPending: 0, billCount: 0, rowIndices: [], bills: [] };
+        pendingByClient[key].totalPending += amt;
+        pendingByClient[key].billCount += 1;
+        pendingByClient[key].rowIndices.push(idx + 2);
+        pendingByClient[key].bills.push({
+          rowIndex: idx + 2,
+          clientName: name,
+          amount: amt,
+          invoiceDate: r[0] ? Utilities.formatDate(new Date(r[0]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+          nextCallDate: r[6] ? Utilities.formatDate(new Date(r[6]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+          remarks: r[4] || ''
+        });
+      });
+    }
+
+    var preview = Object.keys(byClient).map(function(key) {
+      var rcpt = byClient[key];
+      var pend = pendingByClient[key];
+      var pendingTotal = pend ? pend.totalPending : 0;
+      var billCount = pend ? pend.billCount : 0;
+      var rowIndices = pend ? pend.rowIndices : [];
+      var bills = pend ? pend.bills : [];
+
+      var matched = (billCount > 0) && (Math.round(rcpt.totalReceived * 100) === Math.round(pendingTotal * 100));
+      var reason;
+      if (billCount === 0) reason = 'no_bills';
+      else if (matched) reason = 'matched';
+      else if (rcpt.totalReceived < pendingTotal) reason = 'short';
+      else reason = 'excess';
+
+      return {
+        clientName: rcpt.clientName,
+        receiptAmount: rcpt.totalReceived,
+        receiptDate: rcpt.latestReceiptDate,
+        receiptCount: rcpt.rawReceipts.length,
+        pendingTotal: pendingTotal,
+        billCount: billCount,
+        rowIndices: rowIndices,
+        bills: bills,
+        matched: matched,
+        reason: reason
+      };
+    });
+
+    var order = { matched: 0, short: 1, excess: 2, no_bills: 3 };
+    preview.sort(function(a, b) { return order[a.reason] - order[b.reason]; });
+
+    var matchedCount = preview.filter(function(p) { return p.matched; }).length;
+    var matchedAmount = preview.filter(function(p) { return p.matched; })
+                               .reduce(function(s, p) { return s + p.receiptAmount; }, 0);
+
+    return {
+      success: true,
+      groups: preview,
+      totalGroups: preview.length,
+      matchedCount: matchedCount,
+      matchedAmount: matchedAmount,
+      totalReceiptAmount: preview.reduce(function(s, p) { return s + p.receiptAmount; }, 0)
+    };
+  } catch (e) {
+    return { success: false, error: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// RECEIPT IMPORT: Process matched groups
+// ============================================================
+function importReceiptMatches(matchedGroups) {
+  try {
+    if (!matchedGroups || !matchedGroups.length) {
+      return { success: false, error: 'No matched groups to import.' };
+    }
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet) return { success: false, error: 'Payments sheet not found.' };
+
+    var toDelete = [];
+    matchedGroups.forEach(function(g) {
+      if (!g.matched) return;
+      (g.rowIndices || []).forEach(function(rIdx) {
+        toDelete.push({ rowIndex: rIdx, clientName: g.clientName, receiptDate: g.receiptDate });
+      });
+    });
+    if (toDelete.length === 0) {
+      return { success: false, error: 'No rows selected for received-import.' };
+    }
+
+    toDelete.sort(function(a, b) { return b.rowIndex - a.rowIndex; });
+    var deleted = 0;
+    toDelete.forEach(function(t) {
+      try { sheet.deleteRow(t.rowIndex); deleted++; } catch (eDel) {}
+    });
+
+    return {
+      success: true,
+      imported: deleted,
+      clientsCleared: matchedGroups.filter(function(g) { return g.matched; }).length,
+      message: 'Marked ' + deleted + ' invoice(s) across ' + matchedGroups.filter(function(g) { return g.matched; }).length + ' customer(s) as Received.'
+    };
+  } catch (e) {
+    return { success: false, error: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// DATA: Save a payment record
+// ============================================================
+function savePayment(data) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet) {
+      setupSheets();
+      sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    }
+
+    // Sheet layout (9 cols): Date | Client Name | Mobile | Amount | Remarks | Called On | Next Call Date | Status | Manager
+    sheet.appendRow([
+      data.date,
+      data.clientName,
+      data.mobile,
+      data.amount,
+      data.remarks,
+      data.dateGiven,
+      data.nextCallDate,
+      'Pending',
+      ''
+    ]);
+
+    return { success: true, message: 'Payment saved successfully!' };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// DATA: Delete a payment record
+// ============================================================
+function deletePayment(rowIndex) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet) return { success: false, message: 'Payments sheet not found.' };
+    sheet.deleteRow(rowIndex);
+    return { success: true, message: 'Record removed successfully.' };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// GET ALL PAYMENTS: For records and whatsapp view
+// ============================================================
+function getAllPayments() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() <= 1) return [];
+
+  // Actual sheet layout (9 cols):
+  //   A=Date, B=Client Name, C=Mobile No, D=Amount, E=Remarks,
+  //   F=Called On, G=Next Call Date, H=Status, I=Manager
+  var numCols = 9;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
+  return data.map(function(row, index) {
+    var statusRaw = row[7] ? String(row[7]).trim() : '';
+    var status = statusRaw.toLowerCase() === 'received' ? 'Received' : 'Pending';
+    return {
+      rowIndex: index + 2,
+      date: row[0] ? Utilities.formatDate(new Date(row[0]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+      companyName: '',
+      clientName: row[1] || '',
+      mobile: row[2] || '',
+      amount: row[3] || 0,
+      remarks: row[4] || '',
+      dateGiven: row[5] ? Utilities.formatDate(new Date(row[5]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+      nextCallDate: row[6] ? Utilities.formatDate(new Date(row[6]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+      reminder: '',
+      status: status,
+      manager: row[8] ? String(row[8]).trim() : ''
+    };
+  });
+}
+
+// ============================================================
+// COMBINED: fetch payments + managers in a single round-trip.
+// Used by the Records tab so we don't chain two google.script.run calls.
+// ============================================================
+function getRecordsPageData() {
+  return {
+    payments: getAllPayments(),
+    managers: getManagers()
+  };
+}
+
+// ============================================================
+// MANAGERS: list, assign, add, delete
+// ============================================================
+function getManagers() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(MANAGER_SHEET_NAME);
+    if (!sheet) {
+      setupSheets();
+      sheet = ss.getSheetByName(MANAGER_SHEET_NAME);
+    }
+    if (!sheet || sheet.getLastRow() <= 1) return [];
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    return rows.map(function(r) {
+      return { name: r[0] ? String(r[0]).trim() : '', mobile: r[1] ? String(r[1]).trim() : '' };
+    }).filter(function(m) { return m.name !== ''; });
+  } catch (e) {
+    return [];
+  }
+}
+
+function updateManagerForRow(rowIndex, managerName) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet) return { success: false, message: 'Payments sheet not found.' };
+
+    // Client Name is in col 2 (B), Manager is in col 9 (I)
+    var thisClient = sheet.getRange(rowIndex, 2).getValue();
+    var clientKey = thisClient ? String(thisClient).trim().toUpperCase() : '';
+    var newMgr = managerName || '';
+
+    var lastRow = sheet.getLastRow();
+    var updated = 0;
+    if (clientKey && lastRow >= 2) {
+      var clientCol = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+      for (var i = 0; i < clientCol.length; i++) {
+        var nm = clientCol[i][0] ? String(clientCol[i][0]).trim().toUpperCase() : '';
+        if (nm === clientKey) {
+          sheet.getRange(i + 2, 9).setValue(newMgr);
+          updated++;
+        }
+      }
+    } else {
+      sheet.getRange(rowIndex, 9).setValue(newMgr);
+      updated = 1;
+    }
+    SpreadsheetApp.flush();
+    return {
+      success: true,
+      message: newMgr ? ('Assigned "' + newMgr + '" to ' + updated + ' invoice(s) of this client.') : ('Cleared manager on ' + updated + ' invoice(s).'),
+      manager: newMgr,
+      updated: updated
+    };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+function addManager(name, mobile) {
+  try {
+    if (!name || !String(name).trim()) return { success: false, message: 'Manager name is required.' };
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(MANAGER_SHEET_NAME);
+    if (!sheet) { setupSheets(); sheet = ss.getSheetByName(MANAGER_SHEET_NAME); }
+    // check duplicate
+    if (sheet.getLastRow() > 1) {
+      var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+      for (var i = 0; i < existing.length; i++) {
+        if (existing[i][0] && String(existing[i][0]).toUpperCase() === String(name).trim().toUpperCase()) {
+          return { success: false, message: 'Manager already exists.' };
+        }
+      }
+    }
+    sheet.appendRow([String(name).trim(), String(mobile || '').trim()]);
+    return { success: true, message: 'Manager added.' };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+function deleteManager(name) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(MANAGER_SHEET_NAME);
+    if (!sheet || sheet.getLastRow() <= 1) return { success: false, message: 'No managers found.' };
+    var vals = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < vals.length; i++) {
+      if (vals[i][0] && String(vals[i][0]).toUpperCase() === String(name).toUpperCase()) {
+        sheet.deleteRow(i + 2);
+        return { success: true, message: 'Manager removed.' };
+      }
+    }
+    return { success: false, message: 'Manager not found.' };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// UPDATE MOBILE FOR CLIENT
+// ============================================================
+function updateClientMobile(clientName, newMobile) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var paymentSheet = ss.getSheetByName(DATA_SHEET_NAME);
+    
+    if (!paymentSheet || paymentSheet.getLastRow() <= 1) {
+      return { success: false, message: 'No records found.' };
+    }
+
+    var updated = 0;
+    var lastRow = paymentSheet.getLastRow();
+    // Client Name is at col 2 (B), Mobile is at col 3 (C)
+    var clientCol = paymentSheet.getRange(2, 2, lastRow - 1, 1).getValues();
+
+    for (var i = 0; i < clientCol.length; i++) {
+      if (clientCol[i][0] && 
+          String(clientCol[i][0]).toUpperCase() === String(clientName).toUpperCase()) {
+        paymentSheet.getRange(i + 2, 3).setValue(newMobile);
+        updated++;
+      }
+    }
+
+    SpreadsheetApp.flush();
+    return {
+      success: true,
+      message: 'Updated ' + updated + ' record(s) with new mobile number.',
+      updated: updated
+    };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// DATA: Mark a payment as Received
+// ============================================================
+function markPaymentReceived(rowIndex) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet) return { success: false, message: 'Payments sheet not found.' };
+
+    sheet.deleteRow(rowIndex);
+    return {
+      success: true,
+      message: 'Payment marked as Received & removed.'
+    };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// DATA: Update Next Call Date
+// ============================================================
+function updateNextCallDate(rowIndex, newDateStr) {
+  try {
+    if (!newDateStr) return { success: false, message: 'Date is required.' };
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet) return { success: false, message: 'Payments sheet not found.' };
+    var parsed = new Date(newDateStr);
+    if (isNaN(parsed.getTime())) return { success: false, message: 'Invalid date.' };
+    var formatted = Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    sheet.getRange(rowIndex, 7).setValue(formatted);
+    return { success: true, message: 'Next call date updated to ' + formatted, nextCallDate: formatted };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+// ============================================================
+// SCHEDULE: Group pending payments by Next Call Date
+// ============================================================
+function getReceivableByDate() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet || sheet.getLastRow() <= 1) return [];
+
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+    var groups = {};
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    data.forEach(function(row, idx) {
+      var status = row[7] ? String(row[7]).trim().toLowerCase() : '';
+      if (status === 'received') return;
+      if (!row[6]) return;
+      var ncd = new Date(row[6]);
+      if (isNaN(ncd.getTime())) return;
+      var key = Utilities.formatDate(ncd, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      var ncdNoTime = new Date(ncd.getFullYear(), ncd.getMonth(), ncd.getDate());
+      var daysFromToday = Math.round((ncdNoTime.getTime() - today.getTime()) / 86400000);
+      var daysOverdue = daysFromToday < 0 ? Math.abs(daysFromToday) : 0;
+      
+      if (!groups[key]) {
+        groups[key] = { invoiceDate: row[0] ? Utilities.formatDate(new Date(row[0]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '', date: key, count: 0, totalAmount: 0, daysFromToday: daysFromToday, daysOverdue: daysOverdue, customers: [] };
+      }
+      var amt = Number(row[3]) || 0;
+      groups[key].count++;
+      groups[key].totalAmount += amt;
+      groups[key].customers.push({
+        rowIndex: idx + 2,           // real sheet row number (header at row 1)
+        clientName: row[1] || '',
+        amount: amt,
+        mobile: row[2] || '',
+        remarks: row[4] || ''
+      });
+    });
+
+    var arr = Object.keys(groups).map(function(k) { return groups[k]; });
+    arr.sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+    return arr;
+  } catch (e) {
+    return [];
+  }
+}
+
+// ============================================================
+// DAILY REMINDER: Send email with overdue + today's payment list
+// ============================================================
+function sendWhatsAppReminder() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() <= 1) {
+    Logger.log('No payments sheet or empty.');
+    return;
+  }
+
+  var today = new Date();
+  var todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  var todayStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  var overdue = [];
+  var dueToday = [];
+
+  data.forEach(function(row) {
+    if (!row[6]) return; // no Next Call Date
+    var statusRaw = row[7] ? String(row[7]).trim().toLowerCase() : '';
+    if (statusRaw === 'received') return;
+
+    var ncd = new Date(row[6]);
+    if (isNaN(ncd.getTime())) return;
+    var ncdMidnight = new Date(ncd.getFullYear(), ncd.getMonth(), ncd.getDate());
+    var ncdStr = Utilities.formatDate(ncd, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+    var entry = {
+      date: row[0] ? Utilities.formatDate(new Date(row[0]), Session.getScriptTimeZone(), 'dd/MM/yyyy') : '-',
+      company: '-',
+      client: row[1] || '-',
+      mobile: row[2] || '-',
+      amount: Number(row[3]) || 0,
+      remarks: row[4] || '',
+      dateGiven: row[5] ? Utilities.formatDate(new Date(row[5]), Session.getScriptTimeZone(), 'dd/MM/yyyy') : '-',
+      nextCallDate: Utilities.formatDate(ncd, Session.getScriptTimeZone(), 'dd/MM/yyyy'),
+      reminder: '',
+      manager: row[8] ? String(row[8]).trim() : '',
+      _ncdMidnight: ncdMidnight,
+      daysOverdue: Math.round((todayMidnight.getTime() - ncdMidnight.getTime()) / 86400000)
+    };
+
+    if (ncdMidnight.getTime() < todayMidnight.getTime()) {
+      overdue.push(entry);
+    } else if (ncdStr === todayStr) {
+      dueToday.push(entry);
+    }
+  });
+
+  // Alphabetical sort by client name — used for BOTH email tables and WhatsApp messages
+  var alphaSort = function(a, b) {
+    return String(a.client || '').toUpperCase().localeCompare(String(b.client || '').toUpperCase());
+  };
+  overdue.sort(alphaSort);
+  dueToday.sort(alphaSort);
+
+  var formattedToday = Utilities.formatDate(today, Session.getScriptTimeZone(), 'dd MMM yyyy');
+  var totalOverdueAmt = overdue.reduce(function(s, e) { return s + e.amount; }, 0);
+  var totalDueTodayAmt = dueToday.reduce(function(s, e) { return s + e.amount; }, 0);
+  var totalCount = overdue.length + dueToday.length;
+
+  // ---------- "all clear" early-exit email ----------
+  if (totalCount === 0) {
+    var clearBody = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:700px;">' +
+      '<h2 style="color:#059669;">✅ No Overdue or Due-Today Payments</h2>' +
+      '<p><strong>Date:</strong> ' + formattedToday + '</p>' +
+      '<p>You are all caught up. No follow-up calls needed today. 🎉</p>' +
+      '</body></html>';
+    MailApp.sendEmail(
+      MANAGER_EMAIL,
+      '✅ All Clear — No Pending Payments — ' + formattedToday,
+      'No overdue or due-today payments. You are all caught up.',
+      { htmlBody: clearBody }
+    );
+    Logger.log('Sent "all clear" reminder for ' + todayStr);
+    return;
+  }
+
+  // ---------- Group by manager ----------
+  var managers = getManagers();
+  var mgrMobileMap = {};
+  managers.forEach(function(m) { mgrMobileMap[m.name.toUpperCase()] = m.mobile || ''; });
+
+  var byManager = {};      // key: uppercase name, value: { name, overdue[], dueToday[] }
+  var unassigned = { overdue: [], dueToday: [] };
+  overdue.forEach(function(e) {
+    if (e.manager) {
+      var k = e.manager.toUpperCase();
+      if (!byManager[k]) byManager[k] = { name: e.manager, overdue: [], dueToday: [] };
+      byManager[k].overdue.push(e);
+    } else {
+      unassigned.overdue.push(e);
+    }
+  });
+  dueToday.forEach(function(e) {
+    if (e.manager) {
+      var k = e.manager.toUpperCase();
+      if (!byManager[k]) byManager[k] = { name: e.manager, overdue: [], dueToday: [] };
+      byManager[k].dueToday.push(e);
+    } else {
+      unassigned.dueToday.push(e);
+    }
+  });
+
+  // ---------- Build single consolidated email ----------
+  var sections = '';
+
+  // Top summary banner
+  sections += '<div class="s-summary"><strong>Overall Summary:</strong> ' +
+    overdue.length + ' overdue (₹' + formatINR(totalOverdueAmt) + ')  |  ' +
+    dueToday.length + ' due today (₹' + formatINR(totalDueTodayAmt) + ')  |  ' +
+    '<strong>Total: ₹' + formatINR(totalOverdueAmt + totalDueTodayAmt) + '</strong>' +
+    '</div>';
+
+  // Section: per-manager blocks (sorted alphabetically for consistency)
+  var managerKeys = Object.keys(byManager).sort(function(a, b) {
+    return byManager[a].name.localeCompare(byManager[b].name);
+  });
+
+  if (managerKeys.length > 0) {
+    sections += '<h2 class="s-h2 s-h2-purple">👥 Per-Manager Breakdown (' + managerKeys.length + ' manager' + (managerKeys.length === 1 ? '' : 's') + ')</h2>';
+    managerKeys.forEach(function(k) {
+      var mgr = byManager[k];
+      var mgrMobile = mgrMobileMap[k] || '';
+      sections += buildManagerBlockHtml(mgr.name, mgr.overdue, mgr.dueToday, mgrMobile, formattedToday);
+    });
+  } else {
+    sections += '<div class="s-warn"><strong>⚠ No managers assigned yet.</strong> ' +
+      '<span>Open Records tab in the web app and assign a manager to each client using the dropdown. Future daily emails will then split the list per manager.</span></div>';
+  }
+
+  // Section: unassigned block — show ONLY when there ARE managers assigned too
+  if (managerKeys.length > 0 && (unassigned.overdue.length + unassigned.dueToday.length > 0)) {
+    sections += '<h2 class="s-h2 s-h2-grey">❓ Unassigned Clients (' + (unassigned.overdue.length + unassigned.dueToday.length) + ')</h2>' +
+      '<p class="s-note">These clients have not been assigned a manager yet.</p>' +
+      buildManagerBlockHtml('Unassigned', unassigned.overdue, unassigned.dueToday, '', formattedToday);
+  }
+
+  // Section: Admin complete-list button at the end
+  // (No tables here — same rows are already displayed in the manager blocks above.
+  // Repeating them would blow past MailApp's email-body-size limit.)
+  var completeWaLink = buildWaLink(overdue, dueToday, MANAGER_WHATSAPP, 'Complete List', formattedToday);
+  sections += '<h2 class="s-h2 s-h2-green">📋 Full List — Admin WhatsApp</h2>' +
+    '<p class="s-note">Sends the complete overdue + due-today list (all managers combined) to your admin WhatsApp.</p>' +
+    '<div class="s-adm-box">' +
+      '<a href="' + completeWaLink + '" class="s-btn s-btn-wa-big">📱 Send FULL List via WhatsApp to Admin (+' + MANAGER_WHATSAPP + ')</a>' +
+    '</div>';
+
+  // Compact CSS block — replaces hundreds of repeated inline styles per row
+  var css = '<style>' +
+    'body{font-family:Arial,Helvetica,sans-serif;max-width:1100px;margin:0 auto;padding:8px;color:#1f2937}' +
+    'h1{color:#1f2937;margin:0 0 4px 0;font-size:22px}' +
+    'h2.s-h2{padding-bottom:6px;margin-top:26px;font-size:18px;border-bottom:2px solid #d1d5db}' +
+    'h2.s-h2-purple{color:#4c1d95;border-color:#7c3aed}' +
+    'h2.s-h2-grey{color:#374151;border-color:#6b7280}' +
+    'h2.s-h2-green{color:#065f46;border-color:#059669}' +
+    'h3{margin:10px 0 4px 0;font-size:15px}' +
+    'h3.s-h-red{color:#dc2626}' +
+    'h3.s-h-blue{color:#4a90d9}' +
+    '.s-date{color:#6b7280;margin:0 0 12px 0}' +
+    '.s-summary{background:#f3f4f6;padding:12px;border-radius:6px;margin:10px 0;font-size:13px}' +
+    '.s-note{color:#6b7280;font-size:12px;margin:6px 0}' +
+    '.s-warn{background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;padding:12px;margin-top:16px}' +
+    '.s-warn strong{color:#92400e}' +
+    '.s-warn span{color:#78350f}' +
+    '.s-mgr{border:1px solid #ddd6fe;background:#faf5ff;padding:12px;border-radius:8px;margin-top:12px}' +
+    '.s-mgr-head{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}' +
+    '.s-mgr-head h3{margin:0;color:#4c1d95}' +
+    '.s-badges{font-size:12px}' +
+    '.s-bd-red{background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:8px;margin-right:4px}' +
+    '.s-bd-blue{background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:8px;margin-right:4px}' +
+    'table.s-t{border-collapse:collapse;width:100%;margin-top:4px;font-size:12px}' +
+    'table.s-t th,table.s-t td{border:1px solid #ddd;padding:5px 8px;text-align:left}' +
+    'table.s-t thead th{color:#fff}' +
+    'table.s-t-red thead th{background:#dc2626}' +
+    'table.s-t-blue thead th{background:#4a90d9}' +
+    'table.s-t td.s-num{text-align:right}' +
+    'table.s-t td.s-ov{color:#dc2626;font-weight:600}' +
+    'a.s-btn{display:inline-block;text-decoration:none;color:#fff;background:#25D366;padding:9px 18px;border-radius:5px;font-weight:bold;font-size:13px;margin-top:10px}' +
+    'a.s-btn-wa-big{padding:14px 28px;font-size:15px}' +
+    '.s-adm-box{margin-top:14px;padding:14px;background:#ecfdf5;border-radius:6px}' +
+    '.s-foot{color:#888;font-size:11px;margin-top:26px;border-top:1px solid #e5e7eb;padding-top:10px}' +
+    '</style>';
+
+  var emailBody = '<!DOCTYPE html><html><head>' + css + '</head><body>' +
+    '<h1>📞 Daily Payment Follow-Up</h1>' +
+    '<p class="s-date"><strong>Date:</strong> ' + formattedToday + '</p>' +
+    sections +
+    '<p class="s-foot">💡 Every WhatsApp button opens a pre-filled message. You then press send inside WhatsApp — nothing goes out automatically.</p>' +
+    '</body></html>';
+
+  var subject = '📞 ' + totalCount + ' Payment(s) — ' + overdue.length + ' Overdue, ' + dueToday.length + ' Due Today — ' + formattedToday;
+
+  MailApp.sendEmail(
+    MANAGER_EMAIL,
+    subject,
+    'Open this email in HTML mode for full details.',
+    { htmlBody: emailBody }
+  );
+
+  Logger.log('Consolidated reminder sent: ' + overdue.length + ' overdue, ' + dueToday.length + ' due today, ' + managerKeys.length + ' manager blocks, ' + (unassigned.overdue.length + unassigned.dueToday.length) + ' unassigned.');
+  if (managerKeys.length === 0) {
+    Logger.log('⚠ Note: No managers were assigned to any row. Email contains only the Full List, no per-manager bifurcation. Assign managers via Records tab in the web app to enable this.');
+  }
+}
+
+// ============================================================
+// Helper: build one manager's block (tables + subtotal + WA button)
+// ============================================================
+function buildManagerBlockHtml(name, mgrOverdue, mgrDueToday, mgrMobile, formattedToday) {
+  var ovAmt = mgrOverdue.reduce(function(s, e) { return s + e.amount; }, 0);
+  var dtAmt = mgrDueToday.reduce(function(s, e) { return s + e.amount; }, 0);
+  var mgrTotal = ovAmt + dtAmt;
+  var block = '<div class="s-mgr">' +
+    '<div class="s-mgr-head">' +
+      '<h3>👤 ' + name + '</h3>' +
+      '<div class="s-badges">' +
+        (mgrOverdue.length > 0 ? '<span class="s-bd-red">' + mgrOverdue.length + ' overdue (₹' + formatINR(ovAmt) + ')</span>' : '') +
+        (mgrDueToday.length > 0 ? '<span class="s-bd-blue">' + mgrDueToday.length + ' due today (₹' + formatINR(dtAmt) + ')</span>' : '') +
+        '<strong>Total: ₹' + formatINR(mgrTotal) + '</strong>' +
+      '</div>' +
+    '</div>';
+
+  if (mgrOverdue.length > 0) {
+    block += '<h3 class="s-h-red">🚨 Overdue (' + mgrOverdue.length + ')</h3>' + buildTableHtml(mgrOverdue, true);
+  }
+  if (mgrDueToday.length > 0) {
+    block += '<h3 class="s-h-blue">📅 Due Today (' + mgrDueToday.length + ')</h3>' + buildTableHtml(mgrDueToday, false);
+  }
+
+  if (mgrMobile) {
+    var waLink = buildWaLink(mgrOverdue, mgrDueToday, mgrMobile, name, formattedToday);
+    block += '<a href="' + waLink + '" class="s-btn">📱 Send to ' + name + ' (+' + mgrMobile + ')</a>';
+  } else {
+    block += '<p style="color:#b45309;font-size:12px;margin-top:8px;">⚠ No mobile — add one in Managers sheet.</p>';
+  }
+  block += '</div>';
+  return block;
+}
+
+// ============================================================
+// Helper: build the shared table HTML (used everywhere) — CSS-class based
+// ============================================================
+function buildTableHtml(rows, isOverdue) {
+  var cls = isOverdue ? 's-t s-t-red' : 's-t s-t-blue';
+  var extraTh = isOverdue ? '<th>Days Late</th>' : '';
+  var thead = '<thead><tr>' +
+    '<th>Client</th><th>Mobile</th><th>Amount (₹)</th><th>Was/Is Due</th>' +
+    extraTh +
+    '<th>Remarks</th>' +
+    '</tr></thead>';
+  var body = '<tbody>' + rows.map(function(e) {
+    var ovCell = isOverdue ? '<td class="s-ov">' + e.daysOverdue + '</td>' : '';
+    return '<tr>' +
+      '<td><strong>' + e.client + '</strong></td>' +
+      '<td>' + e.mobile + '</td>' +
+      '<td class="s-num">' + formatINR(e.amount) + '</td>' +
+      '<td>' + e.nextCallDate + '</td>' +
+      ovCell +
+      '<td>' + (e.remarks || '-') + '</td>' +
+      '</tr>';
+  }).join('') + '</tbody>';
+  return '<table class="' + cls + '">' + thead + body + '</table>';
+}
+
+// ============================================================
+// Helper: build a wa.me deep-link with pre-filled message
+// ============================================================
+function buildWaLink(mgrOverdue, mgrDueToday, waNumber, audience, formattedToday) {
+  var ovAmt = mgrOverdue.reduce(function(s, e) { return s + e.amount; }, 0);
+  var dtAmt = mgrDueToday.reduce(function(s, e) { return s + e.amount; }, 0);
+  var lines = [
+    '📞 *Payment Follow-Up — ' + formattedToday + '*',
+    (audience === 'Complete List' ? '📋 Full List' : '👤 ' + audience),
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    ''
+  ];
+  if (mgrOverdue.length > 0) {
+    lines.push('🚨 *OVERDUE (' + mgrOverdue.length + ')*');
+    mgrOverdue.forEach(function(e, i) {
+      lines.push((i + 1) + '. *' + e.client + '*' + (e.company !== '-' ? ' | ' + e.company : ''));
+      lines.push('   📞 ' + e.mobile + '   |   💰 ₹' + formatINR(e.amount));
+      lines.push('   📅 Was due: ' + e.nextCallDate + '  (' + e.daysOverdue + ' day' + (e.daysOverdue === 1 ? '' : 's') + ' overdue)');
+      if (e.remarks) lines.push('   📝 ' + e.remarks);
+      lines.push('');
+    });
+    lines.push('Subtotal Overdue: ₹' + formatINR(ovAmt));
+    lines.push('─────────────────────');
+    lines.push('');
+  }
+  if (mgrDueToday.length > 0) {
+    lines.push('📅 *DUE TODAY (' + mgrDueToday.length + ')*');
+    mgrDueToday.forEach(function(e, i) {
+      lines.push((i + 1) + '. *' + e.client + '*' + (e.company !== '-' ? ' | ' + e.company : ''));
+      lines.push('   📞 ' + e.mobile + '   |   💰 ₹' + formatINR(e.amount));
+      if (e.remarks) lines.push('   📝 ' + e.remarks);
+      lines.push('');
+    });
+    lines.push('Subtotal Due Today: ₹' + formatINR(dtAmt));
+    lines.push('─────────────────────');
+    lines.push('');
+  }
+  lines.push('TOTAL TO COLLECT: ₹' + formatINR(ovAmt + dtAmt));
+  return 'https://wa.me/' + waNumber + '?text=' + encodeURIComponent(lines.join('\n'));
+}
+
+function formatINR(n) {
+  if (n === null || n === undefined || isNaN(n)) return '0';
+  var v = Number(n);
+  return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ============================================================
+// TRIGGER SETUP: Install daily trigger at 9 AM
+// ============================================================
+function installDailyTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'sendWhatsAppReminder') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  ScriptApp.newTrigger('sendWhatsAppReminder')
+    .timeBased()
+    .everyDays(1)
+    .atHour(9)
+    .create();
+
+  return 'Daily reminder trigger installed! Reminders will be sent every day at 9 AM.';
+}
+
+// ============================================================
+// TEST: Send test reminder
+// ============================================================
+function testReminder() {
+  // Delegate to the real daily reminder so the test uses the exact same logic —
+  // overdue + due today grouped per manager, all WhatsApp buttons included.
+  try {
+    sendWhatsAppReminder();
+    return 'Test reminder sent to ' + MANAGER_EMAIL + ' — check your inbox. Same content as the daily 9 AM email.';
+  } catch (e) {
+    return 'Error: ' + e.message;
+  }
+}

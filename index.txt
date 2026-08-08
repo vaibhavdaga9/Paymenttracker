@@ -1,0 +1,1585 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #f0f1f3; min-height: 100vh; padding: 20px; }
+    header { background: #ffffff; padding: 20px 30px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border: 1px solid #e5e7eb; }
+    h1 { font-size: 24px; font-weight: 700; color: #1f2937; letter-spacing: -0.5px; }
+    .topbar { display: flex; gap: 8px; flex-wrap: wrap; }
+    .topbar button { padding: 9px 18px; border: 1px solid #d1d5db; border-radius: 8px; background: #ffffff; color: #374151; cursor: pointer; font-weight: 500; font-size: 13px; font-family: 'Inter', sans-serif; transition: all 0.2s ease; }
+    .topbar button:hover { background: #f9fafb; border-color: #9ca3af; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .topbar button.active-tab { background: #374151; color: #ffffff; border-color: #374151; }
+    .container { background: #ffffff; padding: 32px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); max-width: 1400px; margin: 0 auto; border: 1px solid #e5e7eb; }
+    .section { display: none; }
+    .section.visible { display: block; animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    h2 { font-size: 20px; font-weight: 700; color: #1f2937; margin-bottom: 24px; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
+    h3 { font-size: 14px; font-weight: 600; color: #374151; margin-top: 20px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+    .full { grid-column: 1 / -1; }
+    label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+    input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: 'Inter', sans-serif; transition: all 0.2s; background: #ffffff; color: #1f2937; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #6b7280; box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.1); }
+    textarea { min-height: 60px; resize: vertical; }
+    .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; font-family: 'Inter', sans-serif; transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary { background: #374151; color: white; }
+    .btn-primary:hover { background: #1f2937; box-shadow: 0 2px 8px rgba(55, 65, 81, 0.25); }
+    .btn-success { background: #059669; color: white; font-weight: 600; }
+    .btn-success:hover { background: #047857; }
+    .btn-remove { background: #ef4444; color: white; padding: 6px 12px; font-size: 12px; }
+    .btn-remove:hover { background: #dc2626; }
+    .btn-outline { background: #ffffff; color: #374151; border: 1px solid #d1d5db; padding: 6px 12px; font-size: 12px; }
+    .btn-outline:hover { background: #f3f4f6; border-color: #9ca3af; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-warning { background: #d97706; color: white; font-weight: 600; }
+    .btn-warning:hover { background: #b45309; }
+    .btn-info { background: #0891b2; color: white; font-weight: 600; }
+    .btn-info:hover { background: #0e7490; }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+    th { background: #f9fafb; padding: 12px 14px; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    td { padding: 11px 14px; border-bottom: 1px solid #f3f4f6; color: #4b5563; font-size: 13px; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background: #f9fafb; }
+    .info-box { background: #dbeafe; border: 1px solid #93c5fd; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 12px; color: #1e40af; }
+    .info-box strong { display: block; margin-bottom: 6px; font-size: 13px; }
+    .info-box ul { margin-left: 20px; margin-top: 6px; }
+    .success-box { background: #dcfce7; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 12px; color: #15803d; }
+    .success-box strong { display: block; margin-bottom: 4px; font-size: 13px; }
+    .warning-box { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 12px; color: #92400e; }
+    .error-box { background: #fee2e2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 12px; color: #991b1b; }
+    .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.7); display: none; align-items: center; justify-content: center; z-index: 2000; }
+    .loading-overlay.active { display: flex; }
+    .spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top: 3px solid #374151; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .invoice-preview { max-height: 400px; overflow-y: auto; }
+    .invoice-row { display: flex; align-items: center; justify-content: space-between; padding: 8px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; margin-bottom: 4px; font-size: 11px; }
+    .invoice-row.matched { background: #d1fae5; border-color: #a7f3d0; }
+    .invoice-row.new { background: #fef3c7; border-color: #fde68a; }
+    .stat-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; text-align: center; }
+    .stat-card .number { font-size: 24px; font-weight: 700; color: #374151; }
+    .stat-card .label { font-size: 11px; color: #6b7280; margin-top: 4px; text-transform: uppercase; }
+    .customer-list-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    .customer-list-table th, .customer-list-table td { padding: 10px 12px; border: 1px solid #e5e7eb; text-align: left; font-size: 12px; }
+    .customer-list-table th { background: #f9fafb; font-weight: 600; color: #374151; }
+    .customer-list-table tr:hover { background: #f9fafb; }
+    .empty-state { text-align: center; padding: 24px; color: #9ca3af; font-size: 13px; font-style: italic; }
+    .overdue-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .overdue-7d { background: #fef3c7; color: #92400e; }
+    .overdue-15d { background: #fed7aa; color: #9a3412; }
+    .overdue-21d { background: #fecaca; color: #7c2d12; }
+    .overdue-30d { background: #fee2e2; color: #991b1b; }
+    .filter-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .filter-pill { padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 20px; background: #ffffff; color: #374151; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+    .filter-pill:hover { border-color: #9ca3af; background: #f3f4f6; }
+    .filter-pill.active { background: #374151; color: #ffffff; border-color: #374151; }
+    .whatsapp-bill-item { display: flex; align-items: center; padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 8px; }
+    .whatsapp-bill-item input[type="checkbox"] { margin-right: 12px; width: 18px; height: 18px; cursor: pointer; }
+    .whatsapp-bill-item label { margin: 0; flex: 1; cursor: pointer; font-size: 13px; }
+    .bill-details { display: flex; gap: 16px; align-items: center; flex: 1; }
+    .bill-details .invoice-no { font-weight: 600; color: #1f2937; }
+    .bill-details .invoice-date { color: #6b7280; font-size: 12px; }
+    .bill-details .amount { font-weight: 600; color: #374151; }
+    .bill-select-controls { display: flex; gap: 8px; margin-bottom: 12px; }
+    .summary-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .stat-block { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; }
+    .stat-block strong { color: #0c4a6e; display: block; margin-bottom: 4px; }
+    .stat-block .value { font-size: 20px; font-weight: 700; color: #0c4a6e; }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } header { flex-direction: column; align-items: flex-start; } }
+  </style>
+</head>
+<body>
+  <div id="loadingOverlay" class="loading-overlay"><div class="spinner"></div></div>
+
+  <header>
+    <h1>💰 Payment Tracker</h1>
+    <div class="topbar" id="topbar">
+      <button onclick="showSection('payment')" class="active-tab" data-section="payment">📝 Add Payment</button>
+      <button onclick="showSection('daybook')" data-section="daybook">📤 Upload Daybook</button>
+      <button onclick="showSection('records')" data-section="records">📋 Records</button>
+      <button onclick="showSection('schedule')" data-section="schedule">💰 Schedule</button>
+      <button onclick="showSection('whatsapp')" data-section="whatsapp">💬 Send WhatsApp</button>
+      <button onclick="showSection('triggers')" data-section="triggers">⏰ Triggers</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- ADD PAYMENT -->
+    <div id="payment" class="section visible">
+      <h2>Add Payment Record</h2>
+      <div class="grid">
+        <div><label>Date</label><input id="pay_date" type="date" /></div>
+        <div><label>Client Name *</label><input id="pay_client" type="text" placeholder="Customer/Client name" /></div>
+        <div><label>Mobile Number</label><input id="pay_mobile" type="text" maxlength="10" inputmode="numeric" placeholder="10-digit mobile" /></div>
+        <div><label>Amount</label><input id="pay_amount" type="number" placeholder="Amount in rupees" step="0.01" min="0" /></div>
+        <div class="full"><label>Remarks</label><textarea id="pay_remarks" placeholder="Invoice number, notes, etc."></textarea></div>
+        <div><label>Date Given</label><input id="pay_date_given" type="date" /></div>
+        <div><label>Payment Days</label><input id="pay_days" type="number" value="30" min="1" placeholder="Number of days for payment" /></div>
+        <div class="full"><button class="btn btn-primary" onclick="addPaymentManual()" style="width:100%;">Add Payment Record</button></div>
+      </div>
+    </div>
+
+    <!-- UPLOAD DAYBOOK -->
+    <div id="daybook" class="section">
+      <h2>📤 Upload Tally Daybook</h2>
+      
+      <div class="info-box">
+        <strong>📋 Expected File Format:</strong>
+        <ul>
+          <li><strong>Column A:</strong> Invoice Date</li>
+          <li><strong>Column B:</strong> Name of Client (Particulars)</li>
+          <li><strong>Column C:</strong> Vch Type (ignored — kept for reference only)</li>
+          <li><strong>Column D:</strong> Invoice No.</li>
+          <li><strong>Column E:</strong> Invoice Amount (Debit)</li>
+        </ul>
+      </div>
+
+      <div class="grid">
+        <div><label>Select Daybook File (.xlsx or .csv)</label><input type="file" id="daybook_file" accept=".xlsx,.xls,.csv" onchange="handleDaybookUpload()" /></div>
+        <div style="align-self: flex-end;"><button class="btn btn-outline" onclick="document.getElementById('daybook_file').click()">Browse Files</button></div>
+      </div>
+
+      <div id="daybook_preview_section" style="display:none; margin-top:20px;">
+        <h3>Preview & Import</h3>
+        
+        <div class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div class="stat-card">
+            <div class="number" id="stat_total">0</div>
+            <div class="label">Total Customers</div>
+          </div>
+          <div class="stat-card">
+            <div class="number" id="stat_amount">0</div>
+            <div class="label">Total Amount</div>
+          </div>
+          <div class="stat-card">
+            <div class="number" id="stat_invoices">0</div>
+            <div class="label">Total Invoices</div>
+          </div>
+        </div>
+
+        <div id="daybook_errors_section" style="display:none;"></div>
+
+        <h3>Invoice Details</h3>
+        <div class="invoice-preview" id="daybook_invoices_list"></div>
+
+        <div style="margin-top: 16px; display: flex; gap: 10px;">
+          <button class="btn btn-success" onclick="importDaybookData()" style="flex:1;">✓ Import All Invoices</button>
+          <button class="btn btn-outline" onclick="resetDaybookImport()" style="flex:1;">Clear & Start Over</button>
+        </div>
+      </div>
+
+      <div id="daybook_import_status" style="display:none; margin-top:20px;"></div>
+
+      <!-- RECEIPTS UPLOAD -->
+      <div style="margin-top:40px; padding-top:24px; border-top:2px dashed #d1d5db;">
+        <h2 style="border:none; padding-bottom:0;">💵 Upload Payments Received (Receipt File)</h2>
+
+        <div class="info-box">
+          <strong>📋 Expected Receipt File Format:</strong>
+          <ul>
+            <li><strong>Column A:</strong> Date of Received</li>
+            <li><strong>Column B:</strong> Client Name</li>
+            <li><strong>Columns C, D, E:</strong> ignored</li>
+            <li><strong>Column F:</strong> Amount Received (Credit)</li>
+          </ul>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label>Select Receipt File (.xlsx or .csv)</label>
+            <input type="file" id="receipt_file" accept=".xlsx,.xls,.csv" onchange="handleReceiptUpload()" data-testid="receipt-file-input" />
+          </div>
+          <div style="align-self: flex-end;">
+            <button class="btn btn-outline" onclick="document.getElementById('receipt_file').click()" data-testid="receipt-browse-btn">Browse Files</button>
+          </div>
+        </div>
+
+        <div id="receipt_preview_section" style="display:none; margin-top:20px;">
+          <h3>Receipt Match Preview</h3>
+          <div class="grid" style="grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div class="stat-card">
+              <div class="number" id="rcpt_stat_total">0</div>
+              <div class="label">Customers in File</div>
+            </div>
+            <div class="stat-card">
+              <div class="number" id="rcpt_stat_matched">0</div>
+              <div class="label">Matched (will mark received)</div>
+            </div>
+            <div class="stat-card">
+              <div class="number" id="rcpt_stat_total_amt">0</div>
+              <div class="label">Total Receipt Amount</div>
+            </div>
+            <div class="stat-card">
+              <div class="number" id="rcpt_stat_matched_amt">0</div>
+              <div class="label">Matched Amount</div>
+            </div>
+          </div>
+
+          <h3>Per-Client Match Status</h3>
+          <div class="invoice-preview" id="receipt_match_list"></div>
+
+          <div style="margin-top:16px; display:flex; gap:10px;">
+            <button class="btn btn-success" onclick="importReceiptData()" style="flex:1;" data-testid="receipt-import-btn">✓ Mark All Matched as Received</button>
+            <button class="btn btn-outline" onclick="resetReceiptImport()" style="flex:1;" data-testid="receipt-reset-btn">Clear & Start Over</button>
+          </div>
+        </div>
+
+        <div id="receipt_import_status" style="display:none; margin-top:20px;"></div>
+      </div>
+    </div>
+
+    <!-- RECORDS -->
+    <div id="records" class="section">
+      <h2>📋 All Payment Records</h2>
+
+      <div class="grid" style="grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; align-items: end; margin-bottom: 16px;">
+        <div>
+          <label>From Date</label>
+          <input type="date" id="rec_from_date" onchange="applyRecordsFilter()" data-testid="rec-from-date" />
+        </div>
+        <div>
+          <label>To Date</label>
+          <input type="date" id="rec_to_date" onchange="applyRecordsFilter()" data-testid="rec-to-date" />
+        </div>
+        <div>
+          <label>Search Client</label>
+          <input type="text" id="rec_search" placeholder="Type a name..." oninput="applyRecordsFilter()" data-testid="rec-search-input" />
+        </div>
+        <div>
+          <button class="btn btn-outline btn-sm" onclick="clearRecordsFilter()" data-testid="rec-clear-filter">Clear</button>
+        </div>
+      </div>
+
+      <div id="records_table_container"></div>
+    </div>
+
+    <!-- SCHEDULE -->
+    <div id="schedule" class="section">
+      <h2>💰 Receivable Schedule</h2>
+
+      <div class="info-box">
+        <strong>📅 Date-wise receivables</strong> — pending payments grouped by Next Call Date so you can plan cash flow.
+      </div>
+
+      <div class="grid" style="grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; align-items: end; margin-bottom: 16px;">
+        <div>
+          <label>From Date</label>
+          <input type="date" id="sched_from_date" onchange="applyScheduleFilter()" data-testid="sched-from-date" />
+        </div>
+        <div>
+          <label>To Date</label>
+          <input type="date" id="sched_to_date" onchange="applyScheduleFilter()" data-testid="sched-to-date" />
+        </div>
+        <div></div>
+        <div>
+          <button class="btn btn-outline btn-sm" onclick="clearScheduleFilter()" data-testid="sched-clear-filter">Clear</button>
+        </div>
+      </div>
+
+      <h3>Overdue Filters</h3>
+      <div class="filter-pills">
+        <button class="filter-pill active" onclick="applyOverdueFilter('all')" data-filter="all">All</button>
+        <button class="filter-pill" onclick="applyOverdueFilter('7')" data-filter="7">Overdue 7+ Days</button>
+        <button class="filter-pill" onclick="applyOverdueFilter('15')" data-filter="15">Overdue 15+ Days</button>
+        <button class="filter-pill" onclick="applyOverdueFilter('21')" data-filter="21">Overdue 21+ Days</button>
+        <button class="filter-pill" onclick="applyOverdueFilter('30')" data-filter="30">Overdue 30+ Days</button>
+      </div>
+
+      <div class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div class="stat-card">
+          <div class="number" id="sched_stat_total">0</div>
+          <div class="label">Total Pending Amount</div>
+        </div>
+        <div class="stat-card">
+          <div class="number" id="sched_stat_overdue">0</div>
+          <div class="label">Overdue Amount</div>
+        </div>
+        <div class="stat-card">
+          <div class="number" id="sched_stat_filtered">0</div>
+          <div class="label" id="sched_stat_filtered_label">Filtered Amount</div>
+        </div>
+      </div>
+
+      <div id="schedule_table_container"></div>
+    </div>
+
+    <!-- SEND WHATSAPP -->
+    <div id="whatsapp" class="section">
+      <h2>💬 Send WhatsApp Messages</h2>
+
+      <div class="info-box">
+        <strong>🔔 Quick WhatsApp Follow-ups</strong>
+        <ul>
+          <li>Search for a client by name</li>
+          <li>Select which invoices to include in the message</li>
+          <li>Click "Send WhatsApp" to open the message on client's number</li>
+        </ul>
+      </div>
+
+      <div class="grid">
+        <div style="grid-column: 1 / -1;">
+          <label>Search Client Name</label><input type="text" id="wa_search_client" list="wa_client_options" placeholder="Type client name..." oninput="searchWhatsAppClient()" data-testid="wa-search-input" />
+	<datalist id="wa_client_options"></datalist>
+        </div>
+      </div>
+
+      <div id="wa_results_section" style="display:none; margin-top:24px;">
+        <h3>Client Details</h3>
+        <div class="summary-stats">
+          <div class="stat-block">
+            <strong>Client Name</strong>
+            <div class="value" id="wa_client_name">—</div>
+          </div>
+          <div class="stat-block">
+            <strong>Mobile Number</strong>
+            <div class="value" id="wa_client_mobile">—</div>
+          </div>
+        </div>
+
+        <h3>Outstanding Invoices</h3>
+        <div class="summary-stats">
+          <div class="stat-block">
+            <strong>Total Due</strong>
+            <div class="value" id="wa_total_due">₹0</div>
+          </div>
+          <div class="stat-block">
+            <strong>Total Selected</strong>
+            <div class="value" id="wa_total_selected">₹0</div>
+          </div>
+        </div>
+
+        <h3>Bill Selection</h3>
+        <div class="bill-select-controls">
+          <button class="btn btn-outline btn-sm" onclick="selectDueBills()">📍 Select Due Bills</button>
+          <button class="btn btn-outline btn-sm" onclick="selectAllBills()">✓ Select All Bills</button>
+          <button class="btn btn-outline btn-sm" onclick="clearAllBills()">✕ Clear Selection</button>
+        </div>
+
+        <div id="wa_bills_list"></div>
+
+        <div style="margin-top:20px;">
+          <button class="btn btn-info" onclick="sendWhatsAppMessage()" style="width:100%; padding:14px 20px; font-size:14px;">💬 Send WhatsApp Message</button>
+        </div>
+      </div>
+
+      <div id="wa_empty_state" style="margin-top:24px;">
+        <div class="empty-state">Search for a client to get started</div>
+      </div>
+    </div>
+
+    <!-- TRIGGERS -->
+    <div id="triggers" class="section">
+      <h2>⏰ Reminder Triggers</h2>
+      
+      <div class="info-box">
+        <strong>🔔 Daily Reminders</strong>
+        <ul>
+          <li>Reminders are sent at 9:00 AM daily</li>
+          <li>Email: dagamarketing@gmail.com</li>
+          <li>WhatsApp number: 919737299683</li>
+          <li>Includes all customers with "Next Call Date" = today</li>
+        </ul>
+      </div>
+
+      <div class="grid">
+        <div style="padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+          <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">Install automatic daily trigger to send reminders every day at 9:00 AM</p>
+          <button class="btn btn-primary" onclick="installTrigger()" style="width: 100%;">⚙️ Install Daily Trigger</button>
+        </div>
+        <div style="padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+          <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">Send test reminder email to verify system is working correctly</p>
+          <button class="btn btn-warning" onclick="sendTestReminder()" style="width: 100%;">🧪 Send Test Email</button>
+        </div>
+      </div>
+
+      <div id="trigger_status" style="margin-top: 16px;"></div>
+    </div>
+  </div>
+
+  <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+    function showLoading() { document.getElementById('loadingOverlay').classList.add('active'); }
+    function hideLoading() { document.getElementById('loadingOverlay').classList.remove('active'); }
+
+    function formatCurrency(num) {
+      if (!num && num !== 0) return '₹0.00';
+      return '₹' + Number(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function showSection(id) {
+      document.querySelectorAll('.section').forEach(function(s) { s.classList.remove('visible'); });
+      document.getElementById(id).classList.add('visible');
+      document.querySelectorAll('.topbar button').forEach(function(b) { b.classList.remove('active-tab'); });
+      document.querySelector('[data-section="' + id + '"]').classList.add('active-tab');
+      
+      if (id === 'records') loadRecords();
+      if (id === 'schedule') {
+        if (!scheduleGroupsCache || scheduleGroupsCache.length === 0) loadSchedule();
+        else applyScheduleFilter();
+      }
+      if (id === 'whatsapp') {
+  document.getElementById('wa_search_client').value = '';
+  document.getElementById('wa_results_section').style.display = 'none';
+  document.getElementById('wa_empty_state').innerHTML = '<div class="empty-state">Search for a client to get started</div>';
+  document.getElementById('wa_empty_state').style.display = 'block';
+  if (!allRecordsCache || allRecordsCache.length === 0) loadWhatsAppRecords();
+  else populateWhatsAppClientDropdown();
+}
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // ============================================================
+    // MANUAL PAYMENT ENTRY
+    // ============================================================
+    function addPaymentManual() {
+      var client = document.getElementById('pay_client').value.trim();
+      if (!client) { alert('Enter client name'); return; }
+      
+      var date = document.getElementById('pay_date').value;
+      var mobile = document.getElementById('pay_mobile').value.trim();
+      var amount = Number(document.getElementById('pay_amount').value) || 0;
+      var remarks = document.getElementById('pay_remarks').value.trim();
+      var dateGiven = document.getElementById('pay_date_given').value;
+      var paymentDays = Number(document.getElementById('pay_days').value) || 30;
+      
+      if (amount <= 0) { alert('Enter amount'); return; }
+      
+      var invoiceDate = dateGiven ? new Date(dateGiven) : new Date();
+      var nextCallDate = new Date(invoiceDate);
+      nextCallDate.setDate(nextCallDate.getDate() + paymentDays);
+      var nextCallStr = nextCallDate.toISOString().split('T')[0];
+      
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res.success) {
+            alert('Payment record added successfully!');
+            document.getElementById('pay_client').value = '';
+            document.getElementById('pay_mobile').value = '';
+            document.getElementById('pay_amount').value = '';
+            document.getElementById('pay_remarks').value = '';
+            document.getElementById('pay_date_given').value = '';
+            document.getElementById('pay_date').value = '';
+            document.getElementById('pay_days').value = '30';
+          } else {
+            alert('Error: ' + res.message);
+          }
+        })
+        .withFailureHandler(function(err) { hideLoading(); alert('Error: ' + err.message); })
+        .savePayment({
+          date: date || new Date().toISOString().split('T')[0],
+          companyName: '',
+          clientName: client,
+          mobile: mobile,
+          amount: amount,
+          remarks: remarks,
+          dateGiven: dateGiven,
+          nextCallDate: nextCallStr,
+          reminder: ''
+        });
+    }
+
+    // ============================================================
+    // DAYBOOK UPLOAD
+    // ============================================================
+    var daybookPreviewData = null;
+    var daybookGroups = [];
+
+    function handleDaybookUpload() {
+      var fileInput = document.getElementById('daybook_file');
+      var file = fileInput.files[0];
+      if (!file) return;
+      
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File is too large (max 10MB)');
+        fileInput.value = '';
+        return;
+      }
+      
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var base64 = e.target.result.split(',')[1];
+        showLoading();
+        google.script.run
+          .withSuccessHandler(function(res) {
+            hideLoading();
+            if (res.success) {
+              daybookPreviewData = res;
+              displayDaybookPreview(res);
+            } else {
+              alert('Error: ' + res.error);
+            }
+          })
+          .withFailureHandler(function(err) {
+            hideLoading();
+            alert('Error parsing file: ' + err.message);
+          })
+          .getDaybookPreview(base64);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function displayDaybookPreview(data) {
+      var preview = document.getElementById('daybook_preview_section');
+      preview.style.display = 'block';
+
+      // Cache managers so the per-group dropdown can render even if user
+      // hasn't yet loaded the Records tab in this session.
+      if (data.managers && data.managers.length) {
+        managersCache = data.managers;
+      }
+
+      var groupsMap = {};
+      var order = [];
+      var invoiceCount = 0;
+      // Also collect duplicates in a separate list so user can see what was skipped
+      var duplicateInvoices = [];
+
+      data.invoices.forEach(function(inv) {
+        if (inv.isDuplicate) {
+          duplicateInvoices.push(inv);
+          return; // exclude from import list entirely
+        }
+        var key = inv.partyName.toUpperCase();
+        if (!groupsMap[key]) {
+          groupsMap[key] = {
+            partyName: inv.partyName,
+            mobile: inv.mobile || '',
+            manager: inv.manager || '',
+            paymentDays: inv.paymentDays || 30,
+            invoiceDate: inv.invoiceDate, // earliest, used for display + fallback
+            totalAmount: 0,
+            invoiceNos: [],
+            voucherTypes: [],
+            invoices: []      // full per-invoice detail passed to backend
+          };
+          order.push(key);
+        }
+        var g = groupsMap[key];
+        g.totalAmount += Number(inv.amount) || 0;
+        g.invoiceNos.push(inv.invoiceNo);
+        g.invoices.push({
+          invoiceNo: inv.invoiceNo,
+          amount: Number(inv.amount) || 0,
+          invoiceDate: inv.invoiceDate,
+          voucherType: inv.voucherType || '',
+          partyName: inv.partyName    // preserve per-invoice name (protects against grouping edge cases)
+        });
+        if (g.voucherTypes.indexOf(inv.voucherType) === -1) g.voucherTypes.push(inv.voucherType);
+        if (new Date(inv.invoiceDate) < new Date(g.invoiceDate)) g.invoiceDate = inv.invoiceDate;
+        invoiceCount++;
+      });
+
+      daybookGroups = order.map(function(k) { return groupsMap[k]; });
+
+      var totalAmt = 0;
+      daybookGroups.forEach(function(g) {
+        totalAmt += g.totalAmount;
+      });
+      document.getElementById('stat_total').textContent = daybookGroups.length;
+      document.getElementById('stat_amount').textContent = formatCurrency(totalAmt);
+      document.getElementById('stat_invoices').textContent = invoiceCount;
+
+      // Show/hide duplicates section
+      var dupSection = document.getElementById('daybook_duplicates_section');
+      if (!dupSection) {
+        // Create the container on-the-fly (once) right above the invoices list
+        dupSection = document.createElement('div');
+        dupSection.id = 'daybook_duplicates_section';
+        dupSection.style.marginTop = '16px';
+        var invoicesList = document.getElementById('daybook_invoices_list');
+        invoicesList.parentNode.insertBefore(dupSection, invoicesList);
+      }
+      if (duplicateInvoices.length > 0) {
+        var dupHtml = '<div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:14px;">' +
+          '<strong style="color:#991b1b;">⛔ ' + duplicateInvoices.length + ' invoice(s) already exist — skipped from import</strong>' +
+          '<div style="margin-top:10px; max-height:220px; overflow:auto;">' +
+          duplicateInvoices.map(function(inv) {
+            return '<div style="padding:5px 0; border-bottom:1px dashed #fecaca; font-size:12px;">' +
+              '<strong>' + escapeHtml(inv.partyName) + '</strong> — Invoice ' +
+              '<code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">' + escapeHtml(inv.invoiceNo) + '</code>' +
+              ' • ' + formatCurrency(inv.amount) + ' • ' + inv.invoiceDate +
+              '</div>';
+          }).join('') +
+          '</div></div>';
+        dupSection.innerHTML = dupHtml;
+        dupSection.style.display = 'block';
+      } else {
+        dupSection.style.display = 'none';
+        dupSection.innerHTML = '';
+      }
+
+      var errorsSection = document.getElementById('daybook_errors_section');
+      if (data.errors && data.errors.length > 0) {
+        errorsSection.style.display = 'block';
+        errorsSection.innerHTML = '<div class="error-box"><strong>⚠️ Errors found:</strong><br>' + data.errors.join('<br>') + '</div>';
+      } else {
+        errorsSection.style.display = 'none';
+      }
+
+      renderDaybookGroups();
+      preview.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function renderDaybookGroups() {
+      var invoicesList = document.getElementById('daybook_invoices_list');
+      if (!daybookGroups || daybookGroups.length === 0) {
+        invoicesList.innerHTML = '<div class="empty-state">No customers to import. Add a file or remove fewer rows.</div>';
+        document.getElementById('stat_total').textContent = 0;
+        document.getElementById('stat_amount').textContent = formatCurrency(0);
+        document.getElementById('stat_invoices').textContent = 0;
+        return;
+      }
+
+      var html = '';
+      daybookGroups.forEach(function(g, idx) {
+        var nextCall = computeNextCallDate(g.invoiceDate, g.paymentDays);
+        var currentMgr = g.manager || '';
+
+        // Build manager <select> options with correct selection per-group
+        var perGroupOpts = '<option value=""' + (currentMgr === '' ? ' selected' : '') + '>— Unassigned —</option>' +
+          (managersCache || []).map(function(m) {
+            var sel = (m.name === currentMgr) ? ' selected' : '';
+            return '<option value="' + escapeHtml(m.name) + '"' + sel + '>' + escapeHtml(m.name) + '</option>';
+          }).join('');
+
+        var mgrSelect = '<select onchange="updateGroupManager(' + idx + ', this.value)" ' +
+          'data-testid="daybook-manager-select-' + idx + '" ' +
+          'style="padding:5px 8px; font-size:12px; border:1px solid #d1d5db; border-radius:6px; min-width:130px;">' +
+          perGroupOpts +
+          '</select>';
+
+        // Mobile input (auto-filled if already known for this client)
+        var mobInput = '<input type="tel" value="' + escapeHtml(g.mobile || '') + '" ' +
+          'placeholder="Mobile #" maxlength="15" ' +
+          'onchange="updateGroupMobile(' + idx + ', this.value)" ' +
+          'data-testid="daybook-mobile-input-' + idx + '" ' +
+          'style="width:130px; padding:5px 8px; font-size:12px; border:1px solid #d1d5db; border-radius:6px;" />';
+
+        html += '<div class="invoice-row" data-idx="' + idx + '" style="flex-wrap:wrap; gap:10px;">' +
+          '<div style="flex:1; min-width:260px;">' +
+            '<strong>' + escapeHtml(g.partyName) + '</strong> ' +
+            '<span style="color:#6b7280;">(' + g.invoiceNos.length + ' invoice' + (g.invoiceNos.length > 1 ? 's' : '') + ')</span>' +
+            '<br><small style="color:#666;">Invoice Date: ' + g.invoiceDate + ' | Total: <strong>' + formatCurrency(g.totalAmount) + '</strong></small>' +
+            '<br><small style="color:#374151;">Invoices: ' + escapeHtml(g.invoiceNos.join(', ')) + '</small>' +
+            '<br><small style="color:#059669;">⏰ Next Call: <span id="ncd_' + idx + '">' + nextCall + '</span></small>' +
+          '</div>' +
+          '<div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start; margin-left:8px;">' +
+            '<div style="display:flex; align-items:center; gap:6px;"><span style="font-size:11px; color:#6b7280; width:56px;">Manager:</span>' + mgrSelect + '</div>' +
+            '<div style="display:flex; align-items:center; gap:6px;"><span style="font-size:11px; color:#6b7280; width:56px;">Mobile:</span>' + mobInput + '</div>' +
+            '<div style="display:flex; align-items:center; gap:6px;"><span style="font-size:11px; color:#6b7280; width:56px;">Days:</span>' +
+              '<input type="number" min="1" value="' + g.paymentDays + '" style="width:80px; padding:5px 8px; font-size:12px; border:1px solid #d1d5db; border-radius:6px;" onchange="updateGroupDays(' + idx + ', this.value)" data-testid="daybook-days-input-' + idx + '" />' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex; align-items:center; margin-left:6px;">' +
+            '<button class="btn btn-remove btn-sm" title="Remove this customer from import" onclick="removeDaybookGroup(' + idx + ')" data-testid="daybook-remove-' + idx + '">✕</button>' +
+          '</div>' +
+          '</div>';
+      });
+      invoicesList.innerHTML = html;
+    }
+
+    function updateGroupManager(idx, val) {
+      if (!daybookGroups[idx]) return;
+      daybookGroups[idx].manager = val || '';
+
+      // If user picks Vipul/Shravan, auto-adjust default days to 15 (but respect a custom edit)
+      var mgrUpper = (val || '').toUpperCase();
+      if ((mgrUpper === 'VIPUL' || mgrUpper === 'SHRAVAN') && (daybookGroups[idx].paymentDays === 30 || !daybookGroups[idx].paymentDays)) {
+        daybookGroups[idx].paymentDays = 15;
+      }
+      renderDaybookGroups();
+    }
+
+    function updateGroupMobile(idx, val) {
+      if (!daybookGroups[idx]) return;
+      daybookGroups[idx].mobile = (val || '').trim();
+    }
+
+    function computeNextCallDate(invoiceDateStr, days) {
+      var d = new Date(invoiceDateStr);
+      if (isNaN(d.getTime())) return '-';
+      d.setDate(d.getDate() + (Number(days) || 30));
+      var y = d.getFullYear();
+      var m = ('0' + (d.getMonth() + 1)).slice(-2);
+      var day = ('0' + d.getDate()).slice(-2);
+      return y + '-' + m + '-' + day;
+    }
+
+    function updateGroupDays(idx, val) {
+      var days = Number(val);
+      if (!days || days < 1) days = 30;
+      daybookGroups[idx].paymentDays = days;
+      var ncdEl = document.getElementById('ncd_' + idx);
+      if (ncdEl) ncdEl.textContent = computeNextCallDate(daybookGroups[idx].invoiceDate, days);
+    }
+
+    function removeDaybookGroup(idx) {
+      daybookGroups.splice(idx, 1);
+      var totalAmt = 0, invoiceCount = 0;
+      daybookGroups.forEach(function(g) {
+        totalAmt += g.totalAmount;
+        invoiceCount += g.invoiceNos.length;
+      });
+      document.getElementById('stat_total').textContent = daybookGroups.length;
+      document.getElementById('stat_amount').textContent = formatCurrency(totalAmt);
+      document.getElementById('stat_invoices').textContent = invoiceCount;
+      renderDaybookGroups();
+    }
+
+    function importDaybookData() {
+      if (!daybookGroups || daybookGroups.length === 0) {
+        alert('No customers to import. Add a file or restore some rows.');
+        return;
+      }
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res.success) {
+            showImportStatus(res);
+            resetDaybookImport();
+          } else {
+            alert('Import error: ' + (res.error || res.message || 'Unknown error'));
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .importDaybookGrouped(daybookGroups);
+    }
+
+    function showImportStatus(result) {
+      var section = document.getElementById('daybook_import_status');
+      var statusHtml = '<div class="success-box"><strong>✅ Import Successful!</strong><br>' +
+        'Imported: ' + result.imported + ' / ' + result.total + ' customers.';
+      if (result.duplicatesSkipped && result.duplicatesSkipped.length > 0) {
+        statusHtml += '<br><strong style="color:#991b1b;">⛔ ' + result.duplicatesSkipped.length + ' group(s) had duplicate invoice numbers already in the sheet:</strong><ul style="margin:6px 0;">';
+        result.duplicatesSkipped.forEach(function(d) {
+          statusHtml += '<li>' + d.partyName + ' — ' + (d.invoiceNos || []).join(', ') + '</li>';
+        });
+        statusHtml += '</ul>';
+      }
+      statusHtml += '<br><em style="color:#065f46;">Redirecting to Records dashboard in 2 seconds so you can assign Manager / Mobile...</em>';
+      if (result.errors && result.errors.length > 0) {
+        statusHtml += '<br><strong style="color:#dc2626;">Errors:</strong> ' + result.errors.join(', ');
+      }
+      statusHtml += '</div>';
+      section.innerHTML = statusHtml;
+      section.style.display = 'block';
+      section.scrollIntoView({ behavior: 'smooth' });
+
+      // Auto-jump to Records tab so user can immediately edit Manager / Mobile on new rows
+      setTimeout(function() {
+        try { showSection('records'); } catch (e) {}
+      }, 2000);
+    }
+
+    function resetDaybookImport() {
+      document.getElementById('daybook_file').value = '';
+      document.getElementById('daybook_preview_section').style.display = 'none';
+      document.getElementById('daybook_import_status').style.display = 'none';
+      daybookPreviewData = null;
+      daybookGroups = [];
+    }
+
+    // ============================================================
+    // RECEIPT UPLOAD
+    // ============================================================
+    var receiptPreviewData = null;
+
+    function handleReceiptUpload() {
+      var fileInput = document.getElementById('receipt_file');
+      var file = fileInput.files[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File is too large (max 10MB)');
+        fileInput.value = '';
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var base64 = e.target.result.split(',')[1];
+        showLoading();
+        google.script.run
+          .withSuccessHandler(function(res) {
+            hideLoading();
+            if (res.success) {
+              receiptPreviewData = res;
+              displayReceiptPreview(res);
+            } else {
+              alert('Error: ' + res.error);
+            }
+          })
+          .withFailureHandler(function(err) {
+            hideLoading();
+            alert('Error parsing receipt file: ' + err.message);
+          })
+          .getReceiptPreview(base64);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function displayReceiptPreview(data) {
+      var section = document.getElementById('receipt_preview_section');
+      section.style.display = 'block';
+
+      document.getElementById('rcpt_stat_total').textContent = data.totalGroups;
+      document.getElementById('rcpt_stat_matched').textContent = data.matchedCount;
+      document.getElementById('rcpt_stat_total_amt').textContent = formatCurrency(data.totalReceiptAmount);
+      document.getElementById('rcpt_stat_matched_amt').textContent = formatCurrency(data.matchedAmount);
+
+      var listEl = document.getElementById('receipt_match_list');
+      if (!data.groups || data.groups.length === 0) {
+        listEl.innerHTML = '<div class="empty-state">No receipt data found.</div>';
+        return;
+      }
+
+      var html = '';
+      data.groups.forEach(function(g) {
+        var badge, bg, color, note;
+        if (g.reason === 'matched') {
+          badge = '✓ Exact match — will be marked Received';
+          bg = '#d1fae5'; color = '#065f46';
+          note = '';
+        } else if (g.reason === 'short') {
+          badge = '⚠ Short payment';
+          bg = '#fef3c7'; color = '#92400e';
+          note = 'Received ' + formatCurrency(g.receiptAmount) + ' < Pending ' + formatCurrency(g.pendingTotal) + '. Skipped.';
+        } else if (g.reason === 'excess') {
+          badge = '⚠ Excess / advance payment';
+          bg = '#fed7aa'; color = '#9a3412';
+          note = 'Received ' + formatCurrency(g.receiptAmount) + ' > Pending ' + formatCurrency(g.pendingTotal) + '. Skipped (may be advance or covers future bills).';
+        } else {
+          badge = '⚠ No pending bills for this client';
+          bg = '#fee2e2'; color = '#991b1b';
+          note = 'Received ' + formatCurrency(g.receiptAmount) + ', but no matching pending invoices found.';
+        }
+
+        var billsHtml = '';
+        if (g.bills && g.bills.length) {
+          billsHtml = '<div style="margin-top:6px; font-size:11px; color:#4b5563;">' +
+            g.bills.map(function(b) {
+              return '• ' + b.nextCallDate + ' — ' + formatCurrency(b.amount) + ' (' + escapeHtml(b.remarks || '') + ')';
+            }).join('<br>') +
+            '</div>';
+        }
+
+        html += '<div class="invoice-row" style="background:' + bg + '; border-color:' + bg + ';">' +
+          '<div style="flex:1;">' +
+            '<strong>' + escapeHtml(g.clientName) + '</strong>' +
+            '<span style="background:' + color + '; color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; margin-left:8px;">' + badge + '</span>' +
+            '<br><small style="color:#374151;">Receipt Date: ' + g.receiptDate +
+              ' | Received: <strong>' + formatCurrency(g.receiptAmount) + '</strong>' +
+              ' | Pending bills: ' + g.billCount + ' × <strong>' + formatCurrency(g.pendingTotal) + '</strong>' +
+            '</small>' +
+            (note ? '<br><small style="color:' + color + '; font-weight:600;">' + note + '</small>' : '') +
+            billsHtml +
+          '</div>' +
+          '</div>';
+      });
+      listEl.innerHTML = html;
+      section.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function importReceiptData() {
+      if (!receiptPreviewData || !receiptPreviewData.groups) {
+        alert('Upload a receipt file first.'); return;
+      }
+      var matched = receiptPreviewData.groups.filter(function(g) { return g.matched; });
+      if (matched.length === 0) {
+        alert('No exact matches found — nothing to import.'); return;
+      }
+      if (!confirm('Mark ' + matched.length + ' customer(s) as Received? This will PERMANENTLY DELETE the matched invoices from Records.')) return;
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res.success) {
+            var section = document.getElementById('receipt_import_status');
+            section.innerHTML = '<div class="success-box"><strong>✅ ' + res.message + '</strong></div>';
+            section.style.display = 'block';
+            section.scrollIntoView({ behavior: 'smooth' });
+            resetReceiptImport();
+          } else {
+            alert('Error: ' + (res.error || res.message || 'Unknown error'));
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .importReceiptMatches(matched);
+    }
+
+    function resetReceiptImport() {
+      document.getElementById('receipt_file').value = '';
+      document.getElementById('receipt_preview_section').style.display = 'none';
+      receiptPreviewData = null;
+    }
+
+    // ============================================================
+    // RECORDS VIEW
+    // ============================================================
+    var allRecordsCache = [];
+
+	function loadWhatsAppRecords() {
+  showLoading();
+  google.script.run
+    .withSuccessHandler(function(payments) {
+      hideLoading();
+      allRecordsCache = payments || [];
+      populateWhatsAppClientDropdown();
+    })
+    .withFailureHandler(function(err) {
+      hideLoading();
+      alert('Error loading WhatsApp clients: ' + err.message);
+    })
+    .getAllPayments();
+}
+
+function populateWhatsAppClientDropdown() {
+  var datalist = document.getElementById('wa_client_options');
+  if (!datalist) return;
+
+  var names = {};
+  allRecordsCache.forEach(function(payment) {
+    if (!payment || !payment.clientName) return;
+    if (payment.status && payment.status.toLowerCase() === 'received') return;
+    names[String(payment.clientName).trim()] = true;
+  });
+
+  datalist.innerHTML = Object.keys(names).sort().map(function(name) {
+    return '<option value="' + escapeHtml(name) + '"></option>';
+  }).join('');
+}	
+
+    var managersCache = [];
+
+    function loadRecords() {
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          managersCache = (res && res.managers) ? res.managers : [];
+          allRecordsCache = (res && res.payments) ? res.payments : [];
+          populateWhatsAppClientDropdown();
+          applyRecordsFilter();
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error loading records: ' + err.message);
+        })
+        .getRecordsPageData();
+    }
+
+    function applyRecordsFilter() {
+      var fromVal = document.getElementById('rec_from_date').value;
+      var toVal = document.getElementById('rec_to_date').value;
+      var searchVal = (document.getElementById('rec_search').value || '').trim().toLowerCase();
+
+      var fromDate = fromVal ? new Date(fromVal) : null;
+      var toDate = toVal ? new Date(toVal) : null;
+      if (toDate) toDate.setHours(23, 59, 59, 999);
+
+      var filtered = allRecordsCache.filter(function(p) {
+        if (searchVal && String(p.clientName || '').toLowerCase().indexOf(searchVal) === -1) return false;
+        if (fromDate || toDate) {
+          if (!p.date) return false;
+          var pDate = new Date(p.date);
+          if (isNaN(pDate.getTime())) return false;
+          if (fromDate && pDate < fromDate) return false;
+          if (toDate && pDate > toDate) return false;
+        }
+        return true;
+      });
+
+      displayRecords(filtered);
+    }
+
+    function clearRecordsFilter() {
+      document.getElementById('rec_from_date').value = '';
+      document.getElementById('rec_to_date').value = '';
+      document.getElementById('rec_search').value = '';
+      applyRecordsFilter();
+    }
+
+    function displayRecords(payments) {
+      var container = document.getElementById('records_table_container');
+      if (!payments || payments.length === 0) {
+        container.innerHTML = '<div class="empty-state">No payment records match the current filters.</div>';
+        return;
+      }
+
+      // Build manager list for reuse (raw list, options built per-row for accurate selection)
+      var mgrNames = managersCache.map(function(m) { return m.name; });
+
+      var html = '<table class="customer-list-table"><thead><tr>' +
+        '<th>Invoice Date</th><th>Client Name</th><th>Mobile</th><th>Amount</th>' +
+        '<th>Manager</th><th>Remarks</th><th>Action</th>' +
+        '</tr></thead><tbody>';
+
+      payments.forEach(function(p) {
+        var mobileHtml =
+          '<div style="display:flex; gap:4px; align-items:center;">' +
+            '<input type="text" id="mobile_input_' + p.rowIndex + '" value="' + escapeHtml(p.mobile || '') + '" maxlength="10" placeholder="Mobile" style="padding:5px 6px; font-size:11px; width:100px;" data-testid="rec-mobile-input-' + p.rowIndex + '" />' +
+            '<button class="btn btn-outline btn-sm" onclick="updateClientMobile(' + p.rowIndex + ', \'' + p.clientName.replace(/'/g, "\\'") + '\')" data-testid="rec-update-mobile-' + p.rowIndex + '" title="Update mobile for all invoices of this client">💾</button>' +
+          '</div>';
+
+        // Manager dropdown — options with correct `selected` per row
+        var currentMgr = p.manager || '';
+        var currentMgrU = currentMgr.toUpperCase();
+        var optsHtml = '<option value=""' + (currentMgr === '' ? ' selected' : '') + '>— Unassigned —</option>';
+        var found = false;
+        mgrNames.forEach(function(nm) {
+          var sel = (nm.toUpperCase() === currentMgrU && currentMgr !== '') ? ' selected' : '';
+          if (sel) found = true;
+          optsHtml += '<option value="' + escapeHtml(nm) + '"' + sel + '>' + escapeHtml(nm) + '</option>';
+        });
+        if (currentMgr !== '' && !found) {
+          optsHtml += '<option value="' + escapeHtml(currentMgr) + '" selected>' + escapeHtml(currentMgr) + ' (not in list)</option>';
+        }
+        var mgrSelectHtml = '<select onchange="updateManager(' + p.rowIndex + ', this.value)" data-testid="rec-manager-select-' + p.rowIndex + '" style="padding:5px 6px; font-size:12px; width:150px;">' + optsHtml + '</select>';
+
+        var actionHtml =
+          '<div style="display:flex; flex-direction:column; gap:6px;">' +
+            '<button class="btn btn-success btn-sm" onclick="markReceived(' + p.rowIndex + ')" data-testid="rec-received-' + p.rowIndex + '">✓ Received</button>' +
+            '<div style="display:flex; gap:4px; align-items:center;">' +
+              '<input type="date" id="ncd_input_' + p.rowIndex + '" value="' + (p.nextCallDate || '') + '" style="padding:5px 6px; font-size:11px; width:130px;" data-testid="rec-next-call-input-' + p.rowIndex + '" title="Next Call Date" />' +
+              '<button class="btn btn-primary btn-sm" onclick="updateNextCall(' + p.rowIndex + ')" data-testid="rec-update-ncd-' + p.rowIndex + '" title="Update Next Call Date">📅</button>' +
+            '</div>' +
+          '</div>';
+
+        html += '<tr>' +
+          '<td>' + (p.date || '-') + '</td>' +
+          '<td><strong>' + escapeHtml(p.clientName || '') + '</strong></td>' +
+          '<td>' + mobileHtml + '</td>' +
+          '<td>' + formatCurrency(p.amount) + '</td>' +
+          '<td>' + mgrSelectHtml + '</td>' +
+          '<td>' + escapeHtml(p.remarks || '-') + '</td>' +
+          '<td>' + actionHtml + '</td>' +
+          '</tr>';
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function updateManager(rowIndex, managerName) {
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res.success) {
+            // Find the client name for this row from cache
+            var clientName = '';
+            for (var i = 0; i < allRecordsCache.length; i++) {
+              if (allRecordsCache[i].rowIndex === rowIndex) {
+                clientName = allRecordsCache[i].clientName || '';
+                break;
+              }
+            }
+            var clientKey = clientName.toUpperCase();
+            // Propagate to all rows of the same client
+            for (var j = 0; j < allRecordsCache.length; j++) {
+              var nm = (allRecordsCache[j].clientName || '').toUpperCase();
+              if (nm === clientKey) {
+                allRecordsCache[j].manager = managerName || '';
+              }
+            }
+            // Re-render so all dropdowns of that client reflect the change
+            applyRecordsFilter();
+            if (res.updated && res.updated > 1) {
+              // Non-blocking notification
+              console.log('Manager updated for ' + res.updated + ' invoices of this client.');
+            }
+          } else {
+            alert('Error: ' + (res.message || 'Unable to update manager'));
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .updateManagerForRow(rowIndex, managerName);
+    }
+
+    function markReceived(rowIndex) {
+      if (!confirm('Mark this payment as Received? This will PERMANENTLY DELETE the record from the sheet.')) return;
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res.success) {
+            var removedIdx = -1;
+            for (var i = 0; i < allRecordsCache.length; i++) {
+              if (allRecordsCache[i].rowIndex === rowIndex) { removedIdx = i; break; }
+            }
+            if (removedIdx !== -1) {
+              allRecordsCache.splice(removedIdx, 1);
+              for (var j = 0; j < allRecordsCache.length; j++) {
+                if (allRecordsCache[j].rowIndex > rowIndex) {
+                  allRecordsCache[j].rowIndex -= 1;
+                }
+              }
+            }
+            scheduleGroupsCache = [];
+            applyRecordsFilter();
+          } else {
+            alert('Error: ' + (res.message || 'Unable to mark as received'));
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .markPaymentReceived(rowIndex);
+    }
+
+    function updateClientMobile(rowIndex, clientName) {
+      var input = document.getElementById('mobile_input_' + rowIndex);
+      if (!input || !input.value) { alert('Enter a mobile number'); return; }
+      var newMobile = input.value.trim();
+      if (newMobile.length !== 10 || !/^\d+$/.test(newMobile)) {
+        alert('Enter a valid 10-digit mobile number');
+        return;
+      }
+      if (!confirm('Update mobile number for all invoices of ' + clientName + '?')) return;
+      
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res.success) {
+            alert('✓ ' + res.message);
+            for (var i = 0; i < allRecordsCache.length; i++) {
+              if (allRecordsCache[i].clientName === clientName) {
+                allRecordsCache[i].mobile = newMobile;
+              }
+            }
+            applyRecordsFilter();
+          } else {
+            alert('Error: ' + (res.message || 'Unable to update'));
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .updateClientMobile(clientName, newMobile);
+    }
+
+    function updateNextCall(rowIndex) {
+      var input = document.getElementById('ncd_input_' + rowIndex);
+      if (!input || !input.value) { alert('Pick a date first'); return; }
+      var newDate = input.value;
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res.success) {
+            for (var i = 0; i < allRecordsCache.length; i++) {
+              if (allRecordsCache[i].rowIndex === rowIndex) {
+                allRecordsCache[i].nextCallDate = res.nextCallDate || newDate;
+                break;
+              }
+            }
+            scheduleGroupsCache = [];
+            applyRecordsFilter();
+          } else {
+            alert('Error: ' + (res.message || 'Unable to update date'));
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .updateNextCallDate(rowIndex, newDate);
+    }
+
+    // ============================================================
+    // SCHEDULE
+    // ============================================================
+    var scheduleGroupsCache = [];
+    var currentOverdueFilter = 'all';
+
+    function loadSchedule() {
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(groups) {
+          hideLoading();
+          scheduleGroupsCache = groups || [];
+          currentOverdueFilter = 'all';
+          resetOverdueFilter();
+          applyScheduleFilter();
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error loading schedule: ' + err.message);
+        })
+        .getReceivableByDate();
+    }
+
+    function applyOverdueFilter(filterDays) {
+      currentOverdueFilter = filterDays;
+      document.querySelectorAll('.filter-pill').forEach(function(pill) {
+        pill.classList.remove('active');
+      });
+      document.querySelector('[data-filter="' + filterDays + '"]').classList.add('active');
+      
+      var label = 'Filtered Amount';
+      if (filterDays === 'all') label = 'Total Pending Amount';
+      else if (filterDays === '7') label = 'Overdue 7+ Days';
+      else if (filterDays === '15') label = 'Overdue 15+ Days';
+      else if (filterDays === '21') label = 'Overdue 21+ Days';
+      else if (filterDays === '30') label = 'Overdue 30+ Days';
+      document.getElementById('sched_stat_filtered_label').textContent = label;
+      
+      applyScheduleFilter();
+    }
+
+    function resetOverdueFilter() {
+      document.querySelectorAll('.filter-pill').forEach(function(pill) {
+        pill.classList.remove('active');
+      });
+      document.querySelector('[data-filter="all"]').classList.add('active');
+    }
+
+    function applyScheduleFilter() {
+      var fromVal = document.getElementById('sched_from_date').value;
+      var toVal = document.getElementById('sched_to_date').value;
+      var fromDate = fromVal ? new Date(fromVal) : null;
+      var toDate = toVal ? new Date(toVal) : null;
+      if (toDate) toDate.setHours(23, 59, 59, 999);
+
+      var filtered = scheduleGroupsCache.filter(function(g) {
+        if (!fromDate && !toDate) return true;
+        var d = new Date(g.date);
+        if (isNaN(d.getTime())) return false;
+        if (fromDate && d < fromDate) return false;
+        if (toDate && d > toDate) return false;
+        return true;
+      });
+
+      if (currentOverdueFilter !== 'all') {
+        var minDaysOverdue = Number(currentOverdueFilter);
+        filtered = filtered.filter(function(g) {
+          return g.daysOverdue >= minDaysOverdue;
+        });
+      }
+
+      displaySchedule(filtered);
+    }
+
+    function clearScheduleFilter() {
+      document.getElementById('sched_from_date').value = '';
+      document.getElementById('sched_to_date').value = '';
+      applyScheduleFilter();
+    }
+
+    function displaySchedule(groups) {
+      var container = document.getElementById('schedule_table_container');
+      var totalAll = 0, overdue = 0, filtered = 0;
+      
+      groups.forEach(function(g) {
+        totalAll += g.totalAmount;
+        if (g.daysFromToday < 0) overdue += g.totalAmount;
+      });
+
+      if (currentOverdueFilter === 'all') {
+        filtered = totalAll;
+      } else {
+        var minDaysOverdue = Number(currentOverdueFilter);
+        groups.forEach(function(g) {
+          if (g.daysOverdue >= minDaysOverdue) {
+            filtered += g.totalAmount;
+          }
+        });
+      }
+
+      document.getElementById('sched_stat_total').textContent = formatCurrency(totalAll);
+      document.getElementById('sched_stat_overdue').textContent = formatCurrency(overdue);
+      document.getElementById('sched_stat_filtered').textContent = formatCurrency(filtered);
+
+      if (!groups || groups.length === 0) {
+        container.innerHTML = '<div class="empty-state">No pending receivables matching your filter 🎉</div>';
+        return;
+      }
+
+      var html = '<table class="customer-list-table"><thead><tr>' +
+        '<th>Invoice Date</th><th># Customers</th><th>Total Amount</th><th>Status</th><th>Call Date</th><th>Days Overdue</th><th>Customers</th>' +
+        '</tr></thead><tbody>';
+
+      groups.forEach(function(g) {
+        var badge, badgeBg, badgeColor;
+        if (g.daysFromToday < 0) {
+          badge = Math.abs(g.daysFromToday) + ' day(s) overdue';
+          badgeBg = '#fee2e2'; badgeColor = '#991b1b';
+        } else if (g.daysFromToday === 0) {
+          badge = 'Due today';
+          badgeBg = '#fef3c7'; badgeColor = '#92400e';
+        } else {
+          badge = 'In ' + g.daysFromToday + ' day(s)';
+          badgeBg = '#dbeafe'; badgeColor = '#1e40af';
+        }
+        var statusBadge = '<span style="background:' + badgeBg + '; color:' + badgeColor + '; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:600;">' + badge + '</span>';
+
+        var overdueBadgeClass = '';
+        if (g.daysOverdue >= 30) overdueBadgeClass = 'overdue-30d';
+        else if (g.daysOverdue >= 21) overdueBadgeClass = 'overdue-21d';
+        else if (g.daysOverdue >= 15) overdueBadgeClass = 'overdue-15d';
+        else if (g.daysOverdue >= 7) overdueBadgeClass = 'overdue-7d';
+
+        var overdueBadgeHtml = g.daysOverdue > 0
+          ? '<span class="overdue-badge ' + overdueBadgeClass + '">+' + g.daysOverdue + ' days</span>'
+          : '<span style="color:#6b7280;">—</span>';
+
+        var customersHtml = g.customers.map(function(c) {
+          var invLabel = c.remarks ? '<span style="color:#6b7280; font-size:11px;">' + escapeHtml(String(c.remarks).replace(/^Invoice:\s*/i, 'Inv ')) + '</span>' : '';
+          return '<div style="font-size:12px; padding:3px 0; border-bottom:1px dashed #e5e7eb;">' +
+            '<strong>' + escapeHtml(c.clientName) + '</strong> — ' + formatCurrency(c.amount) +
+            (c.mobile ? ' <span style="color:#6b7280;">📱 ' + escapeHtml(c.mobile) + '</span>' : '') +
+            (invLabel ? '<br>' + invLabel : '') +
+            '</div>';
+        }).join('');
+
+        html += '<tr>' +
+          '<td><strong>' + g.invoiceDate + '</strong></td>' +
+          '<td style="text-align:center;">' + g.count + '</td>' +
+          '<td><strong>' + formatCurrency(g.totalAmount) + '</strong></td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td><strong>' + g.date + '</strong></td>' +
+          '<td>' + overdueBadgeHtml + '</td>' +
+          '<td style="min-width:280px;">' + customersHtml + '</td>' +
+          '</tr>';
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // ============================================================
+    // WHATSAPP TAB
+    // ============================================================
+    var waCurrentClient = null;
+    var waAllBills = [];
+    var waSelectedBills = [];
+
+function searchWhatsAppClient() {
+  var searchVal = document.getElementById('wa_search_client').value.trim();
+  if (searchVal.length === 0) {
+    document.getElementById('wa_results_section').style.display = 'none';
+    document.getElementById('wa_empty_state').innerHTML = '<div class="empty-state">Search for a client to get started</div>';
+    document.getElementById('wa_empty_state').style.display = 'block';
+    return;
+  }
+
+  if (!allRecordsCache || allRecordsCache.length === 0) {
+    loadWhatsAppRecords();
+    return;
+  }
+
+  var searchLower = searchVal.toLowerCase();
+  var exact = [];
+  var partial = [];
+
+  allRecordsCache.forEach(function(payment) {
+    if (payment.status && payment.status.toLowerCase() === 'received') return;
+    var clientName = String(payment.clientName || '');
+    if (!clientName) return;
+
+    if (clientName.toLowerCase() === searchLower) exact.push(payment);
+    else if (clientName.toLowerCase().indexOf(searchLower) !== -1) partial.push(payment);
+  });
+
+  var matching = exact.length > 0 ? exact : partial;
+
+  if (matching.length === 0) {
+    document.getElementById('wa_results_section').style.display = 'none';
+    document.getElementById('wa_empty_state').innerHTML = '<div class="empty-state">No pending bills found for "' + escapeHtml(searchVal) + '"</div>';
+    document.getElementById('wa_empty_state').style.display = 'block';
+    return;
+  }
+
+  var selectedClientName = matching[0].clientName;
+  matching = matching.filter(function(payment) {
+    return String(payment.clientName || '').toLowerCase() === String(selectedClientName || '').toLowerCase();
+  });
+
+  waCurrentClient = { name: selectedClientName, mobile: matching[0].mobile };
+  waAllBills = matching;
+  waSelectedBills = [];
+
+  displayWhatsAppClient(matching);
+}
+
+    function displayWhatsAppClient(bills) {
+      document.getElementById('wa_empty_state').style.display = 'none';
+      document.getElementById('wa_results_section').style.display = 'block';
+
+      var clientName = bills[0].clientName;
+      var clientMobile = bills[0].mobile || 'Not Available';
+
+      document.getElementById('wa_client_name').textContent = clientName;
+      document.getElementById('wa_client_mobile').textContent = clientMobile;
+
+      var totalDue = bills.reduce(function(sum, b) { return sum + b.amount; }, 0);
+      document.getElementById('wa_total_due').textContent = formatCurrency(totalDue);
+
+      var billsHtml = '';
+      bills.forEach(function(bill, idx) {
+        var isSoon = false;
+        if (bill.nextCallDate) {
+          var nextCallDate = new Date(bill.nextCallDate);
+          var today = new Date();
+          today.setHours(0, 0, 0, 0);
+          nextCallDate.setHours(0, 0, 0, 0);
+          if (nextCallDate.getTime() <= today.getTime()) {
+            isSoon = true;
+          }
+        }
+
+        var billClass = isSoon ? 'title="This invoice is overdue - will be pre-selected"' : '';
+        billsHtml += '<div class="whatsapp-bill-item">' +
+          '<input type="checkbox" id="wa_bill_' + idx + '" onchange="updateWhatsAppSelection()" ' + (isSoon ? 'checked' : '') + ' ' + billClass + ' />' +
+          '<label for="wa_bill_' + idx + '" style="display:none;"></label>' +
+          '<div class="bill-details">' +
+            '<div class="invoice-no">' + escapeHtml(bill.remarks || 'Invoice') + '</div>' +
+            '<div class="invoice-date">' + bill.date + '</div>' +
+            '<div class="amount"><strong>' + formatCurrency(bill.amount) + '</strong></div>' +
+          '</div>' +
+        '</div>';
+      });
+
+      document.getElementById('wa_bills_list').innerHTML = billsHtml;
+      updateWhatsAppSelection();
+    }
+
+    function updateWhatsAppSelection() {
+      waSelectedBills = [];
+      waAllBills.forEach(function(bill, idx) {
+        var checkbox = document.getElementById('wa_bill_' + idx);
+        if (checkbox && checkbox.checked) {
+          waSelectedBills.push(bill);
+        }
+      });
+
+      var selectedTotal = waSelectedBills.reduce(function(sum, b) { return sum + b.amount; }, 0);
+      document.getElementById('wa_total_selected').textContent = formatCurrency(selectedTotal);
+    }
+
+    function selectDueBills() {
+      waAllBills.forEach(function(bill, idx) {
+        var checkbox = document.getElementById('wa_bill_' + idx);
+        if (checkbox) {
+          if (bill.nextCallDate) {
+            var nextCallDate = new Date(bill.nextCallDate);
+            var today = new Date();
+            today.setHours(0, 0, 0, 0);
+            nextCallDate.setHours(0, 0, 0, 0);
+            checkbox.checked = nextCallDate.getTime() <= today.getTime();
+          } else {
+            checkbox.checked = false;
+          }
+        }
+      });
+      updateWhatsAppSelection();
+    }
+
+    function selectAllBills() {
+      waAllBills.forEach(function(bill, idx) {
+        var checkbox = document.getElementById('wa_bill_' + idx);
+        if (checkbox) checkbox.checked = true;
+      });
+      updateWhatsAppSelection();
+    }
+
+    function clearAllBills() {
+      waAllBills.forEach(function(bill, idx) {
+        var checkbox = document.getElementById('wa_bill_' + idx);
+        if (checkbox) checkbox.checked = false;
+      });
+      updateWhatsAppSelection();
+    }
+
+    function sendWhatsAppMessage() {
+      if (!waCurrentClient) {
+        alert('Select a client first');
+        return;
+      }
+      if (waSelectedBills.length === 0) {
+        alert('Select at least one invoice to send');
+        return;
+      }
+      if (!waCurrentClient.mobile || waCurrentClient.mobile === 'Not Available') {
+        alert('Mobile number not available for this client');
+        return;
+      }
+
+      var billDetails = waSelectedBills.map(function(bill, idx) {
+        return (idx + 1) + '. ' + (bill.remarks || 'Invoice') + ' - ' + formatCurrency(bill.amount);
+      }).join('\n');
+
+      var totalAmount = waSelectedBills.reduce(function(sum, b) { return sum + b.amount; }, 0);
+
+      var message = 'Dear ' + waCurrentClient.name + ',\n\n' +
+        'This is a follow-up regarding your outstanding payment(s):\n\n' +
+        billDetails + '\n\n' +
+        'Total Amount Due: ' + formatCurrency(totalAmount) + '\n\n' +
+        'Request you to clear the payment at the earliest.\n\n' +
+        'Regards,\nDaga Marketing Pvt Ltd';
+
+      var whatsappLink = 'https://wa.me/' + waCurrentClient.mobile + '?text=' + encodeURIComponent(message);
+      window.open(whatsappLink, '_blank');
+    }
+
+    // ============================================================
+    // TRIGGERS
+    // ============================================================
+    function installTrigger() {
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(msg) {
+          hideLoading();
+          alert('✅ ' + msg);
+          document.getElementById('trigger_status').innerHTML = '<div class="success-box"><strong>✓ Daily trigger installed</strong><br>Reminders will be sent every day at 9:00 AM</div>';
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .installDailyTrigger();
+    }
+
+    function sendTestReminder() {
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(msg) {
+          hideLoading();
+          alert('✅ ' + msg);
+          document.getElementById('trigger_status').innerHTML = '<div class="success-box"><strong>✓ Test email sent</strong><br>' + msg + '</div>';
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .testReminder();
+    }
+
+    window.onload = function() {
+      document.getElementById('pay_date').valueAsDate = new Date();
+      document.getElementById('pay_date_given').valueAsDate = new Date();
+    };
+  </script>
+</body>
+</html>
