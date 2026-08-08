@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "PaymentTracker WhatsApp Helper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Reads WhatsApp mobile numbers and shows outstanding bills from PaymentTracker API.",
-  "permissions": ["storage", "tabs", "sidePanel"],
+  "permissions": ["storage", "tabs"],
   "host_permissions": [
     "https://web.whatsapp.com/*",
     "https://script.google.com/*",
@@ -14,10 +14,8 @@
     "service_worker": "service-worker.js"
   },
   "action": {
-    "default_title": "PaymentTracker"
-  },
-  "side_panel": {
-    "default_path": "sidepanel.html"
+    "default_title": "PaymentTracker",
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {

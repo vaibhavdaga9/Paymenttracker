@@ -6,12 +6,7 @@ chrome.runtime.onInstalled.addListener(function() {
   });
 });
 
-chrome.action.onClicked.addListener(function(tab) {
-  if (!tab || tab.id === undefined) return;
-  chrome.sidePanel.open({ tabId: tab.id }).catch(function() {});
-});
-
-chrome.runtime.onMessage.addListener(function(message, sender) {
+chrome.runtime.onMessage.addListener(function(message) {
   if (!message || !message.type) return;
 
   if (message.type === 'PHONE_DETECTED') {
@@ -21,15 +16,11 @@ chrome.runtime.onMessage.addListener(function(message, sender) {
       lastDetectedAt: Date.now()
     });
 
-    if (sender.tab && sender.tab.id !== undefined) {
-      chrome.sidePanel.open({ tabId: sender.tab.id }).catch(function() {});
-    }
-
     chrome.runtime.sendMessage({
       type: 'PHONE_UPDATED',
       phone: message.phone || '',
       source: message.source || ''
-    });
+    }).catch(function() {});
   }
 
   if (message.type === 'OPEN_WHATSAPP' && message.url) {
