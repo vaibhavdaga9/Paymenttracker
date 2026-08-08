@@ -199,24 +199,7 @@ function getOrCreateCustomerIdByMobile(mobile) {
 
   var lookupSheet = getLookupSheetForCustomerIds();
   var map = getCustomerIdMapFromLookup();
-  if (map[normalized]) {
-    if (lookupSheet && lookupSheet.getLastRow() > 1) {
-      var rows = lookupSheet.getRange(2, 7, lookupSheet.getLastRow() - 1, 2).getValues();
-      var existsInLookup = false;
-      for (var i = 0; i < rows.length; i++) {
-        if (normalizeMobileNumber(rows[i][0]) === normalized) {
-          existsInLookup = true;
-          break;
-        }
-      }
-      if (!existsInLookup) {
-        lookupSheet.appendRow(['', '', '', '', '', '', normalized, map[normalized]]);
-      }
-    } else if (lookupSheet) {
-      lookupSheet.appendRow(['', '', '', '', '', '', normalized, map[normalized]]);
-    }
-    return map[normalized];
-  }
+  if (map[normalized]) return map[normalized];
 
   var newId = getNextCustomerId(map);
   lookupSheet.appendRow(['', '', '', '', '', '', normalized, newId]);
@@ -230,22 +213,65 @@ function ensureCustomerIdsForExistingRows() {
     if (!sheet || sheet.getLastRow() <= 1) return;
 
     var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PAYMENT_TOTAL_COLUMNS).getValues();
-    var updates = [];
+    var lookupSheet = getLookupSheetForCustomerIds();
+    var mobileToId = getCustomerIdMapFromLookup();
+    var rowsToAppendLookup = [];
+    var needsWrite = false;
+    var customerIdColumnValues = data.map(function(row) {
+      return [row[COL_CUSTOMER_ID - 1] ? String(row[COL_CUSTOMER_ID - 1]).trim() : ''];
+    });
+
+    var maxNum = 0;
+    Object.keys(mobileToId).forEach(function(mobile) {
+      var m = String(mobileToId[mobile] || '').match(/^CUS(\d{4,})$/i);
+      if (m) maxNum = Math.max(maxNum, Number(m[1]) || 0);
+    });
+
     data.forEach(function(row, idx) {
       var mobile = normalizeMobileNumber(row[COL_MOBILE - 1]);
       if (!mobile) return;
       var currentId = row[COL_CUSTOMER_ID - 1] ? String(row[COL_CUSTOMER_ID - 1]).trim() : '';
-      if (currentId) return;
-      var customerId = getOrCreateCustomerIdByMobile(mobile);
-      if (customerId) updates.push({ rowIndex: idx + 2, customerId: customerId });
+
+      if (currentId) {
+        if (!mobileToId[mobile]) {
+          mobileToId[mobile] = currentId;
+          rowsToAppendLookup.push(['', '', '', '', '', '', mobile, currentId]);
+        }
+        return;
+      }
+
+      var customerId = mobileToId[mobile];
+      if (!customerId) {
+        maxNum++;
+        customerId = 'CUS' + String(maxNum).padStart(4, '0');
+        mobileToId[mobile] = customerId;
+        rowsToAppendLookup.push(['', '', '', '', '', '', mobile, customerId]);
+      }
+      customerIdColumnValues[idx][0] = customerId;
+      needsWrite = true;
     });
 
-    updates.forEach(function(u) {
-      sheet.getRange(u.rowIndex, COL_MOBILE).setValue(normalizeMobileNumber(sheet.getRange(u.rowIndex, COL_MOBILE).getValue()));
-      sheet.getRange(u.rowIndex, COL_CUSTOMER_ID).setValue(u.customerId);
-    });
+    if (needsWrite) {
+      sheet.getRange(2, COL_CUSTOMER_ID, customerIdColumnValues.length, 1).setValues(customerIdColumnValues);
+    }
+    if (rowsToAppendLookup.length > 0 && lookupSheet) {
+      var start = lookupSheet.getLastRow() + 1;
+      lookupSheet.getRange(start, 1, rowsToAppendLookup.length, 8).setValues(rowsToAppendLookup);
+    }
   } catch (e) {
     Logger.log('ensureCustomerIdsForExistingRows error: ' + e.message);
+  }
+}
+
+function runCustomerIdBackfillIfNeeded() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'customer_id_backfill_v1';
+    if (cache.get(key)) return;
+    ensureCustomerIdsForExistingRows();
+    cache.put(key, '1', 3600);
+  } catch (e) {
+    ensureCustomerIdsForExistingRows();
   }
 }
 
@@ -968,7 +994,7 @@ function getAllPayments() {
 // Used by the Records tab so we don't chain two google.script.run calls.
 // ============================================================
 function getRecordsPageData() {
-  ensureCustomerIdsForExistingRows();
+  runCustomerIdBackfillIfNeeded();
   return {
     payments: getAllPayments(),
     managers: getManagers()
@@ -1091,19 +1117,27 @@ function updateClientMobile(clientName, newMobile) {
       return { success: false, message: 'No records found.' };
     }
 
-    var updated = 0;
     var lastRow = paymentSheet.getLastRow();
-    // Client Name is at col 2 (B), Mobile is at col 3 (C)
-    var clientCol = paymentSheet.getRange(2, 2, lastRow - 1, 1).getValues();
+    var rowCount = lastRow - 1;
+    // Client Name is at col 2 (B), Mobile is at col 3 (C), Customer ID is at col 10 (J)
+    var clientCol = paymentSheet.getRange(2, COL_CLIENT_NAME, rowCount, 1).getValues();
+    var mobileCol = paymentSheet.getRange(2, COL_MOBILE, rowCount, 1).getValues();
+    var customerIdCol = paymentSheet.getRange(2, COL_CUSTOMER_ID, rowCount, 1).getValues();
 
+    var updated = 0;
     var customerId = getOrCreateCustomerIdByMobile(normalizedMobile);
     for (var i = 0; i < clientCol.length; i++) {
       if (clientCol[i][0] && 
           String(clientCol[i][0]).toUpperCase() === String(clientName).toUpperCase()) {
-        paymentSheet.getRange(i + 2, COL_MOBILE).setValue(normalizedMobile);
-        paymentSheet.getRange(i + 2, COL_CUSTOMER_ID).setValue(customerId);
+        mobileCol[i][0] = normalizedMobile;
+        customerIdCol[i][0] = customerId;
         updated++;
       }
+    }
+
+    if (updated > 0) {
+      paymentSheet.getRange(2, COL_MOBILE, rowCount, 1).setValues(mobileCol);
+      paymentSheet.getRange(2, COL_CUSTOMER_ID, rowCount, 1).setValues(customerIdCol);
     }
 
     SpreadsheetApp.flush();
@@ -1158,7 +1192,9 @@ function markPaymentsReceivedBulk(rowIndices) {
       try {
         sheet.deleteRow(rowIndex);
         deleted++;
-      } catch (eDel) {}
+      } catch (eDel) {
+        Logger.log('Failed to delete row ' + rowIndex + ': ' + eDel.message);
+      }
     });
     return { success: true, deleted: deleted, message: 'Marked ' + deleted + ' invoice(s) as Received.' };
   } catch (e) {
@@ -1326,13 +1362,19 @@ function sendWhatsAppReminder() {
     compactListHtml('📅 Due Today', dueToday, '#1d4ed8') +
     '<p style="font-size:11px;color:#6b7280;margin-top:12px;">Email trimmed to customer-wise totals for delivery reliability.</p>' +
     '</body></html>';
+  var textBody = 'Daily Payment Summary - ' + formattedToday + '\n' +
+    'Overdue: ' + overdue.length + ' (₹' + formatINR(totalOverdueAmt) + ')\n' +
+    'Due Today: ' + dueToday.length + ' (₹' + formatINR(totalDueTodayAmt) + ')\n' +
+    'Total: ₹' + formatINR(totalOverdueAmt + totalDueTodayAmt) + '\n\n' +
+    (overdue.length ? ('Overdue:\n' + overdue.map(function(e) { return '- ' + e.client + ': ₹' + formatINR(e.amount); }).join('\n') + '\n\n') : '') +
+    (dueToday.length ? ('Due Today:\n' + dueToday.map(function(e) { return '- ' + e.client + ': ₹' + formatINR(e.amount); }).join('\n')) : '');
 
-  var subject = '📞 ' + totalCount + ' Customer Due — ' + overdue.length + ' Overdue, ' + dueToday.length + ' Due Today — ' + formattedToday;
+  var subject = '📞 ' + totalCount + ' Customer' + (totalCount === 1 ? '' : 's') + ' Due — ' + overdue.length + ' Overdue, ' + dueToday.length + ' Due Today — ' + formattedToday;
 
   MailApp.sendEmail(
     MANAGER_EMAIL,
     subject,
-    'Daily Payment Summary: customer name and amount due.',
+    textBody,
     { htmlBody: emailBody }
   );
 

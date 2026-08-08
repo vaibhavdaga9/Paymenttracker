@@ -997,6 +997,11 @@ function populateWhatsAppClientDropdown() {
     }
 
     function applyRecordsFilter() {
+      var filtered = getFilteredRecords();
+      displayRecords(filtered);
+    }
+
+    function getFilteredRecords() {
       var fromVal = document.getElementById('rec_from_date').value;
       var toVal = document.getElementById('rec_to_date').value;
       var searchVal = (document.getElementById('rec_search').value || '').trim().toLowerCase();
@@ -1016,8 +1021,7 @@ function populateWhatsAppClientDropdown() {
         }
         return true;
       });
-
-      displayRecords(filtered);
+      return filtered;
     }
 
     function clearRecordsFilter() {
@@ -1044,12 +1048,11 @@ function populateWhatsAppClientDropdown() {
         '</tr></thead><tbody>';
 
       payments.forEach(function(p) {
-        var clientNameEscaped = String(p.clientName || '').replace(/'/g, "\\'");
         var isChecked = !!selectedRecordRows[p.rowIndex];
         var mobileHtml =
           '<div style="display:flex; gap:4px; align-items:center;">' +
             '<input type="text" id="mobile_input_' + p.rowIndex + '" value="' + escapeHtml(p.mobile || '') + '" maxlength="10" placeholder="Mobile" style="padding:5px 6px; font-size:11px; width:100px;" data-testid="rec-mobile-input-' + p.rowIndex + '" />' +
-            '<button class="btn btn-outline btn-sm" onclick="updateClientMobile(' + p.rowIndex + ', \'' + clientNameEscaped + '\')" data-testid="rec-update-mobile-' + p.rowIndex + '" title="Update mobile for all invoices of this client">💾</button>' +
+            '<button class="btn btn-outline btn-sm" onclick="updateClientMobile(' + p.rowIndex + ', \'' + String(p.clientName || '').replace(/'/g, "\\'") + '\')" data-testid="rec-update-mobile-' + p.rowIndex + '" title="Update mobile for all invoices of this client">💾</button>' +
           '</div>';
 
         // Manager dropdown — options with correct `selected` per row
@@ -1079,7 +1082,7 @@ function populateWhatsAppClientDropdown() {
         html += '<tr>' +
           '<td><input type="checkbox" id="rec_select_' + p.rowIndex + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleRecordSelection(' + p.rowIndex + ', this.checked)" /></td>' +
           '<td>' + (p.date || '-') + '</td>' +
-          '<td><strong>' + escapeHtml(p.clientName || '') + '</strong> <button class="btn btn-outline btn-sm" style="margin-left:6px;" onclick="selectClientRecords(\'' + clientNameEscaped + '\')">Select All</button></td>' +
+          '<td><strong>' + escapeHtml(p.clientName || '') + '</strong> <button class="btn btn-outline btn-sm" style="margin-left:6px;" onclick="selectClientRecordsByRow(' + p.rowIndex + ')">Select All</button></td>' +
           '<td>' + mobileHtml + '</td>' +
           '<td>' + formatCurrency(p.amount) + '</td>' +
           '<td>' + mgrSelectHtml + '</td>' +
@@ -1107,22 +1110,7 @@ function populateWhatsAppClientDropdown() {
     }
 
     function selectAllVisibleRecords() {
-      var fromVal = document.getElementById('rec_from_date').value;
-      var toVal = document.getElementById('rec_to_date').value;
-      var searchVal = (document.getElementById('rec_search').value || '').trim().toLowerCase();
-      var fromDate = fromVal ? new Date(fromVal) : null;
-      var toDate = toVal ? new Date(toVal) : null;
-      if (toDate) toDate.setHours(23, 59, 59, 999);
-
-      allRecordsCache.forEach(function(p) {
-        if (searchVal && String(p.clientName || '').toLowerCase().indexOf(searchVal) === -1) return;
-        if (fromDate || toDate) {
-          if (!p.date) return;
-          var pDate = new Date(p.date);
-          if (isNaN(pDate.getTime())) return;
-          if (fromDate && pDate < fromDate) return;
-          if (toDate && pDate > toDate) return;
-        }
+      getFilteredRecords().forEach(function(p) {
         selectedRecordRows[p.rowIndex] = true;
       });
       applyRecordsFilter();
@@ -1133,8 +1121,16 @@ function populateWhatsAppClientDropdown() {
       applyRecordsFilter();
     }
 
-    function selectClientRecords(clientName) {
-      allRecordsCache.forEach(function(p) {
+    function selectClientRecordsByRow(rowIndex) {
+      var clientName = '';
+      for (var i = 0; i < allRecordsCache.length; i++) {
+        if (allRecordsCache[i].rowIndex === rowIndex) {
+          clientName = allRecordsCache[i].clientName || '';
+          break;
+        }
+      }
+      if (!clientName) return;
+      getFilteredRecords().forEach(function(p) {
         if (String(p.clientName || '').toUpperCase() === String(clientName || '').toUpperCase()) {
           selectedRecordRows[p.rowIndex] = true;
         }
