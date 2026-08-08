@@ -10,16 +10,19 @@ var MANAGER_SHEET_NAME = 'Managers';
 var MANAGER_EMAIL = 'dagamarketing@gmail.com';
 var MANAGER_WHATSAPP = '919737299683';
 
-// Column indices (1-based)
+// Payments sheet column indices (1-based)
 var COL_DATE = 1;
-var COL_COMPANY = 2;
-var COL_CLIENT_NAME = 3;
-var COL_MOBILE = 4;
-var COL_AMOUNT = 5;
-var COL_REMARKS = 6;
-var COL_DATE_GIVEN = 7;
-var COL_NEXT_CALL_DATE = 8;
-var COL_REMINDER = 9;
+var COL_CLIENT_NAME = 2;
+var COL_MOBILE = 3;
+var COL_AMOUNT = 4;
+var COL_REMARKS = 5;
+var COL_DATE_GIVEN = 6;
+var COL_NEXT_CALL_DATE = 7;
+var COL_STATUS = 8;
+var COL_MANAGER = 9;
+var COL_CUSTOMER_ID = 10;
+var COL_ALT_MOBILE = 11;
+var PAYMENT_TOTAL_COLUMNS = 11;
 
 // ============================================================
 // SETUP: Initialize sheets with headers
@@ -37,16 +40,17 @@ function setupSheets() {
     log.push('• Payments sheet already exists');
   }
   if (paymentSheet.getLastRow() === 0) {
-    // Actual sheet layout (9 cols) used by the app
+    // Sheet layout (11 cols)
     paymentSheet.appendRow([
       'Date', 'Client Name', 'Mobile No', 'Amount', 'Remarks',
-      'Called On', 'Next Call Date', 'Status', 'Manager'
+      'Called On', 'Next Call Date', 'Status', 'Manager',
+      'Customer ID', 'Alternate Mobile No.'
     ]);
-    paymentSheet.getRange(1, 1, 1, 9).setFontWeight('bold').setBackground('#4a90d9').setFontColor('#ffffff');
+    paymentSheet.getRange(1, 1, 1, PAYMENT_TOTAL_COLUMNS).setFontWeight('bold').setBackground('#4a90d9').setFontColor('#ffffff');
     paymentSheet.setFrozenRows(1);
-    log.push('✓ Added Payments headers (9-col layout with Manager)');
+    log.push('✓ Added Payments headers (Customer ID + Alternate Mobile included)');
   } else {
-    // Ensure Status column H exists for existing sheets
+    // Ensure required columns exist for existing sheets
     var headerH = paymentSheet.getRange(1, 8).getValue();
     if (!headerH || String(headerH).trim() === '') {
       paymentSheet.getRange(1, 8).setValue('Status').setFontWeight('bold').setBackground('#4a90d9').setFontColor('#ffffff');
@@ -58,6 +62,16 @@ function setupSheets() {
       log.push('✓ Added Manager column (I)');
     } else {
       log.push('• Manager column (I) already present');
+    }
+    var headerJ = paymentSheet.getRange(1, 10).getValue();
+    if (!headerJ || String(headerJ).trim() === '') {
+      paymentSheet.getRange(1, 10).setValue('Customer ID').setFontWeight('bold').setBackground('#4a90d9').setFontColor('#ffffff');
+      log.push('✓ Added Customer ID column (J)');
+    }
+    var headerK = paymentSheet.getRange(1, 11).getValue();
+    if (!headerK || String(headerK).trim() === '') {
+      paymentSheet.getRange(1, 11).setValue('Alternate Mobile No.').setFontWeight('bold').setBackground('#4a90d9').setFontColor('#ffffff');
+      log.push('✓ Added Alternate Mobile No. column (K)');
     }
   }
 
@@ -81,10 +95,23 @@ function setupSheets() {
   var lookupSheet = ss.getSheetByName(LOOKUP_SHEET_NAME);
   if (!lookupSheet) {
     lookupSheet = ss.insertSheet(LOOKUP_SHEET_NAME);
-    lookupSheet.appendRow(['Companies', 'Clients', 'Mobiles', 'PartyCompany', 'PartyClient', 'PartyMobile']);
-    lookupSheet.getRange(1, 1, 1, 6).setFontWeight('bold').setBackground('#e8f4fd');
+    lookupSheet.appendRow(['Companies', 'Clients', 'Mobiles', 'PartyCompany', 'PartyClient', 'PartyMobile', 'Customer Mobile', 'Customer ID']);
+    lookupSheet.getRange(1, 1, 1, 8).setFontWeight('bold').setBackground('#e8f4fd');
     log.push('✓ Created Lookups sheet');
+  } else {
+    var lookupHeaderG = lookupSheet.getRange(1, 7).getValue();
+    if (!lookupHeaderG || String(lookupHeaderG).trim() === '') {
+      lookupSheet.getRange(1, 7).setValue('Customer Mobile').setFontWeight('bold').setBackground('#e8f4fd');
+      log.push('✓ Added Customer Mobile column in Lookups (G)');
+    }
+    var lookupHeaderH = lookupSheet.getRange(1, 8).getValue();
+    if (!lookupHeaderH || String(lookupHeaderH).trim() === '') {
+      lookupSheet.getRange(1, 8).setValue('Customer ID').setFontWeight('bold').setBackground('#e8f4fd');
+      log.push('✓ Added Customer ID column in Lookups (H)');
+    }
   }
+
+  ensureCustomerIdsForExistingRows();
 
   var msg = 'Setup complete! ' + log.join('  |  ');
   Logger.log(msg);
@@ -103,6 +130,123 @@ function doGet() {
 
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function normalizeMobileNumber(mobile) {
+  if (mobile === null || mobile === undefined) return '';
+  var digits = String(mobile).replace(/\D/g, '');
+  if (digits.length === 12 && digits.indexOf('91') === 0) {
+    digits = digits.slice(2);
+  }
+  return digits.length === 10 ? digits : '';
+}
+
+function getLookupSheetForCustomerIds() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var lookupSheet = ss.getSheetByName(LOOKUP_SHEET_NAME);
+  if (!lookupSheet) {
+    setupSheets();
+    lookupSheet = ss.getSheetByName(LOOKUP_SHEET_NAME);
+  }
+  return lookupSheet;
+}
+
+function getCustomerIdMapFromLookup() {
+  var lookupSheet = getLookupSheetForCustomerIds();
+  var map = {};
+  if (lookupSheet && lookupSheet.getLastRow() > 1) {
+    var rows = lookupSheet.getRange(2, 7, lookupSheet.getLastRow() - 1, 2).getValues();
+    rows.forEach(function(r) {
+      var mobile = normalizeMobileNumber(r[0]);
+      var customerId = r[1] ? String(r[1]).trim() : '';
+      if (mobile && customerId) map[mobile] = customerId;
+    });
+  }
+
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var paymentSheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (paymentSheet && paymentSheet.getLastRow() > 1) {
+      var paymentRows = paymentSheet.getRange(2, 1, paymentSheet.getLastRow() - 1, PAYMENT_TOTAL_COLUMNS).getValues();
+      paymentRows.forEach(function(r) {
+        var mobile = normalizeMobileNumber(r[COL_MOBILE - 1]);
+        var customerId = r[COL_CUSTOMER_ID - 1] ? String(r[COL_CUSTOMER_ID - 1]).trim() : '';
+        if (mobile && customerId && !map[mobile]) map[mobile] = customerId;
+      });
+    }
+  } catch (e) {
+    Logger.log('Lookup map seed from payments failed: ' + e.message);
+  }
+  return map;
+}
+
+function getNextCustomerId(existingMap) {
+  var maxNum = 0;
+  Object.keys(existingMap || {}).forEach(function(mobile) {
+    var id = existingMap[mobile];
+    var m = String(id || '').match(/^CUS(\d{4,})$/i);
+    if (m) {
+      var n = Number(m[1]) || 0;
+      if (n > maxNum) maxNum = n;
+    }
+  });
+  return 'CUS' + String(maxNum + 1).padStart(4, '0');
+}
+
+function getOrCreateCustomerIdByMobile(mobile) {
+  var normalized = normalizeMobileNumber(mobile);
+  if (!normalized) return '';
+
+  var lookupSheet = getLookupSheetForCustomerIds();
+  var map = getCustomerIdMapFromLookup();
+  if (map[normalized]) {
+    if (lookupSheet && lookupSheet.getLastRow() > 1) {
+      var rows = lookupSheet.getRange(2, 7, lookupSheet.getLastRow() - 1, 2).getValues();
+      var existsInLookup = false;
+      for (var i = 0; i < rows.length; i++) {
+        if (normalizeMobileNumber(rows[i][0]) === normalized) {
+          existsInLookup = true;
+          break;
+        }
+      }
+      if (!existsInLookup) {
+        lookupSheet.appendRow(['', '', '', '', '', '', normalized, map[normalized]]);
+      }
+    } else if (lookupSheet) {
+      lookupSheet.appendRow(['', '', '', '', '', '', normalized, map[normalized]]);
+    }
+    return map[normalized];
+  }
+
+  var newId = getNextCustomerId(map);
+  lookupSheet.appendRow(['', '', '', '', '', '', normalized, newId]);
+  return newId;
+}
+
+function ensureCustomerIdsForExistingRows() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet || sheet.getLastRow() <= 1) return;
+
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PAYMENT_TOTAL_COLUMNS).getValues();
+    var updates = [];
+    data.forEach(function(row, idx) {
+      var mobile = normalizeMobileNumber(row[COL_MOBILE - 1]);
+      if (!mobile) return;
+      var currentId = row[COL_CUSTOMER_ID - 1] ? String(row[COL_CUSTOMER_ID - 1]).trim() : '';
+      if (currentId) return;
+      var customerId = getOrCreateCustomerIdByMobile(mobile);
+      if (customerId) updates.push({ rowIndex: idx + 2, customerId: customerId });
+    });
+
+    updates.forEach(function(u) {
+      sheet.getRange(u.rowIndex, COL_MOBILE).setValue(normalizeMobileNumber(sheet.getRange(u.rowIndex, COL_MOBILE).getValue()));
+      sheet.getRange(u.rowIndex, COL_CUSTOMER_ID).setValue(u.customerId);
+    });
+  } catch (e) {
+    Logger.log('ensureCustomerIdsForExistingRows error: ' + e.message);
+  }
 }
 
 // ============================================================
@@ -336,16 +480,21 @@ function importDaybookInvoices(base64FileData) {
         nextCallDate.setDate(nextCallDate.getDate() + paymentDays);
         var nextCallStr = Utilities.formatDate(nextCallDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
         
-        // 9-col layout: Date | Client | Mobile | Amount | Remarks | Called On | Next Call | Status | Manager
+        var mobile = normalizeMobileNumber(inv.mobile || '');
+        var customerId = mobile ? getOrCreateCustomerIdByMobile(mobile) : '';
+
+        // 11-col layout: Date | Client | Mobile | Amount | Remarks | Called On | Next Call | Status | Manager | Customer ID | Alternate Mobile
         paymentSheet.appendRow([
           inv.invoiceDate,
           inv.partyName,
-          '',
+          mobile,
           inv.amount,
           'Invoice: ' + inv.invoiceNo + ' (' + inv.voucherType + ')',
           inv.invoiceDate,
           nextCallStr,
           'Pending',
+          '',
+          customerId,
           ''
         ]);
         
@@ -413,7 +562,8 @@ function importDaybookGrouped(groupedInvoices) {
         if (!partyName) { errors.push('Skipped: empty party name'); return; }
 
         // Mobile: prefer what user typed/edited in preview, else auto-inherit from existing rows for this client
-        var mobile = (g.mobile && String(g.mobile).trim()) || '';
+        var mobile = normalizeMobileNumber((g.mobile && String(g.mobile).trim()) || '');
+        var customerId = mobile ? getOrCreateCustomerIdByMobile(mobile) : '';
 
         // Manager: prefer user's selection from preview dropdown; else auto-inherit existing assignment for this client
         var chosenMgr = (g.manager && String(g.manager).trim()) || '';
@@ -463,7 +613,7 @@ function importDaybookGrouped(groupedInvoices) {
           var vchType = inv.voucherType || (g.voucherTypes && g.voucherTypes[0]) || '';
           var remarks = 'Invoice: ' + (inv.invoiceNo || '-') + (vchType ? ' (' + vchType + ')' : '');
 
-          // 9-col layout: Date | Client | Mobile | Amount | Remarks | Called On | Next Call | Status | Manager
+          // 11-col layout: Date | Client | Mobile | Amount | Remarks | Called On | Next Call | Status | Manager | Customer ID | Alternate Mobile
           paymentSheet.appendRow([
             invDateStr,
             rowPartyName,
@@ -473,7 +623,9 @@ function importDaybookGrouped(groupedInvoices) {
             invDateStr,
             nextCallStr,
             'Pending',
-            inheritedMgr
+            inheritedMgr,
+            customerId,
+            ''
           ]);
 
           if (invNoKey) existingInvoiceNos[invNoKey] = true;
@@ -611,8 +763,8 @@ function getReceiptPreview(base64FileData) {
     var sheet = ss.getSheetByName(DATA_SHEET_NAME);
     var pendingByClient = {};
     if (sheet && sheet.getLastRow() > 1) {
-      // 9-col sheet: A=Date, B=Client, C=Mobile, D=Amount, E=Remarks, F=Called On, G=Next Call, H=Status, I=Manager
-      var allRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+      // Payments sheet columns: A..K
+      var allRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, PAYMENT_TOTAL_COLUMNS).getValues();
       allRows.forEach(function(r, idx) {
         var status = r[7] ? String(r[7]).trim().toLowerCase() : '';
         if (status === 'received') return;
@@ -737,16 +889,21 @@ function savePayment(data) {
       sheet = ss.getSheetByName(DATA_SHEET_NAME);
     }
 
-    // Sheet layout (9 cols): Date | Client Name | Mobile | Amount | Remarks | Called On | Next Call Date | Status | Manager
+    var mobile = normalizeMobileNumber(data.mobile || '');
+    var customerId = mobile ? getOrCreateCustomerIdByMobile(mobile) : '';
+
+    // Sheet layout (11 cols): Date | Client Name | Mobile | Amount | Remarks | Called On | Next Call Date | Status | Manager | Customer ID | Alternate Mobile
     sheet.appendRow([
       data.date,
       data.clientName,
-      data.mobile,
+      mobile,
       data.amount,
       data.remarks,
       data.dateGiven,
       data.nextCallDate,
       'Pending',
+      '',
+      customerId,
       ''
     ]);
 
@@ -779,10 +936,10 @@ function getAllPayments() {
   var sheet = ss.getSheetByName(DATA_SHEET_NAME);
   if (!sheet || sheet.getLastRow() <= 1) return [];
 
-  // Actual sheet layout (9 cols):
+  // Actual sheet layout (11 cols):
   //   A=Date, B=Client Name, C=Mobile No, D=Amount, E=Remarks,
-  //   F=Called On, G=Next Call Date, H=Status, I=Manager
-  var numCols = 9;
+  //   F=Called On, G=Next Call Date, H=Status, I=Manager, J=Customer ID, K=Alternate Mobile No.
+  var numCols = PAYMENT_TOTAL_COLUMNS;
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
   return data.map(function(row, index) {
     var statusRaw = row[7] ? String(row[7]).trim() : '';
@@ -799,7 +956,9 @@ function getAllPayments() {
       nextCallDate: row[6] ? Utilities.formatDate(new Date(row[6]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
       reminder: '',
       status: status,
-      manager: row[8] ? String(row[8]).trim() : ''
+      manager: row[8] ? String(row[8]).trim() : '',
+      customerId: row[9] ? String(row[9]).trim() : '',
+      alternateMobile: row[10] ? String(row[10]).trim() : ''
     };
   });
 }
@@ -809,6 +968,7 @@ function getAllPayments() {
 // Used by the Records tab so we don't chain two google.script.run calls.
 // ============================================================
 function getRecordsPageData() {
+  ensureCustomerIdsForExistingRows();
   return {
     payments: getAllPayments(),
     managers: getManagers()
@@ -919,6 +1079,11 @@ function deleteManager(name) {
 // ============================================================
 function updateClientMobile(clientName, newMobile) {
   try {
+    var normalizedMobile = normalizeMobileNumber(newMobile);
+    if (!normalizedMobile) {
+      return { success: false, message: 'Enter a valid 10-digit mobile number.' };
+    }
+
     var ss = SpreadsheetApp.openById(SHEET_ID);
     var paymentSheet = ss.getSheetByName(DATA_SHEET_NAME);
     
@@ -931,10 +1096,12 @@ function updateClientMobile(clientName, newMobile) {
     // Client Name is at col 2 (B), Mobile is at col 3 (C)
     var clientCol = paymentSheet.getRange(2, 2, lastRow - 1, 1).getValues();
 
+    var customerId = getOrCreateCustomerIdByMobile(normalizedMobile);
     for (var i = 0; i < clientCol.length; i++) {
       if (clientCol[i][0] && 
           String(clientCol[i][0]).toUpperCase() === String(clientName).toUpperCase()) {
-        paymentSheet.getRange(i + 2, 3).setValue(newMobile);
+        paymentSheet.getRange(i + 2, COL_MOBILE).setValue(normalizedMobile);
+        paymentSheet.getRange(i + 2, COL_CUSTOMER_ID).setValue(customerId);
         updated++;
       }
     }
@@ -942,7 +1109,7 @@ function updateClientMobile(clientName, newMobile) {
     SpreadsheetApp.flush();
     return {
       success: true,
-      message: 'Updated ' + updated + ' record(s) with new mobile number.',
+      message: 'Updated ' + updated + ' record(s) with new mobile number and Customer ID ' + customerId + '.',
       updated: updated
     };
   } catch (e) {
@@ -964,6 +1131,36 @@ function markPaymentReceived(rowIndex) {
       success: true,
       message: 'Payment marked as Received & removed.'
     };
+  } catch (e) {
+    return { success: false, message: 'Error: ' + e.message };
+  }
+}
+
+function markPaymentsReceivedBulk(rowIndices) {
+  try {
+    if (!rowIndices || !rowIndices.length) {
+      return { success: false, message: 'No rows selected.' };
+    }
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(DATA_SHEET_NAME);
+    if (!sheet) return { success: false, message: 'Payments sheet not found.' };
+
+    var uniqueSorted = rowIndices
+      .map(function(v) { return Number(v); })
+      .filter(function(v) { return !isNaN(v) && v >= 2; })
+      .filter(function(v, i, arr) { return arr.indexOf(v) === i; })
+      .sort(function(a, b) { return b - a; });
+
+    if (!uniqueSorted.length) return { success: false, message: 'No valid rows selected.' };
+
+    var deleted = 0;
+    uniqueSorted.forEach(function(rowIndex) {
+      try {
+        sheet.deleteRow(rowIndex);
+        deleted++;
+      } catch (eDel) {}
+    });
+    return { success: true, deleted: deleted, message: 'Marked ' + deleted + ' invoice(s) as Received.' };
   } catch (e) {
     return { success: false, message: 'Error: ' + e.message };
   }
@@ -997,7 +1194,7 @@ function getReceivableByDate() {
     var sheet = ss.getSheetByName(DATA_SHEET_NAME);
     if (!sheet || sheet.getLastRow() <= 1) return [];
 
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PAYMENT_TOTAL_COLUMNS).getValues();
     var groups = {};
     var today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1051,9 +1248,9 @@ function sendWhatsAppReminder() {
   var todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   var todayStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
-  var overdue = [];
-  var dueToday = [];
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PAYMENT_TOTAL_COLUMNS).getValues();
+  var overdueByClient = {};
+  var dueTodayByClient = {};
 
   data.forEach(function(row) {
     if (!row[6]) return; // no Next Call Date
@@ -1064,30 +1261,23 @@ function sendWhatsAppReminder() {
     if (isNaN(ncd.getTime())) return;
     var ncdMidnight = new Date(ncd.getFullYear(), ncd.getMonth(), ncd.getDate());
     var ncdStr = Utilities.formatDate(ncd, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-
-    var entry = {
-      date: row[0] ? Utilities.formatDate(new Date(row[0]), Session.getScriptTimeZone(), 'dd/MM/yyyy') : '-',
-      company: '-',
-      client: row[1] || '-',
-      mobile: row[2] || '-',
-      amount: Number(row[3]) || 0,
-      remarks: row[4] || '',
-      dateGiven: row[5] ? Utilities.formatDate(new Date(row[5]), Session.getScriptTimeZone(), 'dd/MM/yyyy') : '-',
-      nextCallDate: Utilities.formatDate(ncd, Session.getScriptTimeZone(), 'dd/MM/yyyy'),
-      reminder: '',
-      manager: row[8] ? String(row[8]).trim() : '',
-      _ncdMidnight: ncdMidnight,
-      daysOverdue: Math.round((todayMidnight.getTime() - ncdMidnight.getTime()) / 86400000)
-    };
+    var client = row[1] ? String(row[1]).trim() : '';
+    if (!client) return;
+    var amount = Number(row[3]) || 0;
+    if (amount <= 0) return;
+    var key = client.toUpperCase();
 
     if (ncdMidnight.getTime() < todayMidnight.getTime()) {
-      overdue.push(entry);
+      if (!overdueByClient[key]) overdueByClient[key] = { client: client, amount: 0 };
+      overdueByClient[key].amount += amount;
     } else if (ncdStr === todayStr) {
-      dueToday.push(entry);
+      if (!dueTodayByClient[key]) dueTodayByClient[key] = { client: client, amount: 0 };
+      dueTodayByClient[key].amount += amount;
     }
   });
 
-  // Alphabetical sort by client name — used for BOTH email tables and WhatsApp messages
+  var overdue = Object.keys(overdueByClient).map(function(k) { return overdueByClient[k]; });
+  var dueToday = Object.keys(dueTodayByClient).map(function(k) { return dueTodayByClient[k]; });
   var alphaSort = function(a, b) {
     return String(a.client || '').toUpperCase().localeCompare(String(b.client || '').toUpperCase());
   };
@@ -1099,7 +1289,6 @@ function sendWhatsAppReminder() {
   var totalDueTodayAmt = dueToday.reduce(function(s, e) { return s + e.amount; }, 0);
   var totalCount = overdue.length + dueToday.length;
 
-  // ---------- "all clear" early-exit email ----------
   if (totalCount === 0) {
     var clearBody = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:700px;">' +
       '<h2 style="color:#059669;">✅ No Overdue or Due-Today Payments</h2>' +
@@ -1116,132 +1305,38 @@ function sendWhatsAppReminder() {
     return;
   }
 
-  // ---------- Group by manager ----------
-  var managers = getManagers();
-  var mgrMobileMap = {};
-  managers.forEach(function(m) { mgrMobileMap[m.name.toUpperCase()] = m.mobile || ''; });
+  var compactListHtml = function(title, items, color) {
+    if (!items.length) return '';
+    var rows = items.map(function(item) {
+      return '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + item.client + '</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">₹' + formatINR(item.amount) + '</td></tr>';
+    }).join('');
+    return '<h3 style="margin:16px 0 8px;color:' + color + ';">' + title + ' (' + items.length + ')</h3>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:6px 8px;background:#f9fafb;">Customer</th><th style="text-align:right;padding:6px 8px;background:#f9fafb;">Amount Due</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  };
 
-  var byManager = {};      // key: uppercase name, value: { name, overdue[], dueToday[] }
-  var unassigned = { overdue: [], dueToday: [] };
-  overdue.forEach(function(e) {
-    if (e.manager) {
-      var k = e.manager.toUpperCase();
-      if (!byManager[k]) byManager[k] = { name: e.manager, overdue: [], dueToday: [] };
-      byManager[k].overdue.push(e);
-    } else {
-      unassigned.overdue.push(e);
-    }
-  });
-  dueToday.forEach(function(e) {
-    if (e.manager) {
-      var k = e.manager.toUpperCase();
-      if (!byManager[k]) byManager[k] = { name: e.manager, overdue: [], dueToday: [] };
-      byManager[k].dueToday.push(e);
-    } else {
-      unassigned.dueToday.push(e);
-    }
-  });
-
-  // ---------- Build single consolidated email ----------
-  var sections = '';
-
-  // Top summary banner
-  sections += '<div class="s-summary"><strong>Overall Summary:</strong> ' +
-    overdue.length + ' overdue (₹' + formatINR(totalOverdueAmt) + ')  |  ' +
-    dueToday.length + ' due today (₹' + formatINR(totalDueTodayAmt) + ')  |  ' +
-    '<strong>Total: ₹' + formatINR(totalOverdueAmt + totalDueTodayAmt) + '</strong>' +
-    '</div>';
-
-  // Section: per-manager blocks (sorted alphabetically for consistency)
-  var managerKeys = Object.keys(byManager).sort(function(a, b) {
-    return byManager[a].name.localeCompare(byManager[b].name);
-  });
-
-  if (managerKeys.length > 0) {
-    sections += '<h2 class="s-h2 s-h2-purple">👥 Per-Manager Breakdown (' + managerKeys.length + ' manager' + (managerKeys.length === 1 ? '' : 's') + ')</h2>';
-    managerKeys.forEach(function(k) {
-      var mgr = byManager[k];
-      var mgrMobile = mgrMobileMap[k] || '';
-      sections += buildManagerBlockHtml(mgr.name, mgr.overdue, mgr.dueToday, mgrMobile, formattedToday);
-    });
-  } else {
-    sections += '<div class="s-warn"><strong>⚠ No managers assigned yet.</strong> ' +
-      '<span>Open Records tab in the web app and assign a manager to each client using the dropdown. Future daily emails will then split the list per manager.</span></div>';
-  }
-
-  // Section: unassigned block — show ONLY when there ARE managers assigned too
-  if (managerKeys.length > 0 && (unassigned.overdue.length + unassigned.dueToday.length > 0)) {
-    sections += '<h2 class="s-h2 s-h2-grey">❓ Unassigned Clients (' + (unassigned.overdue.length + unassigned.dueToday.length) + ')</h2>' +
-      '<p class="s-note">These clients have not been assigned a manager yet.</p>' +
-      buildManagerBlockHtml('Unassigned', unassigned.overdue, unassigned.dueToday, '', formattedToday);
-  }
-
-  // Section: Admin complete-list button at the end
-  // (No tables here — same rows are already displayed in the manager blocks above.
-  // Repeating them would blow past MailApp's email-body-size limit.)
-  var completeWaLink = buildWaLink(overdue, dueToday, MANAGER_WHATSAPP, 'Complete List', formattedToday);
-  sections += '<h2 class="s-h2 s-h2-green">📋 Full List — Admin WhatsApp</h2>' +
-    '<p class="s-note">Sends the complete overdue + due-today list (all managers combined) to your admin WhatsApp.</p>' +
-    '<div class="s-adm-box">' +
-      '<a href="' + completeWaLink + '" class="s-btn s-btn-wa-big">📱 Send FULL List via WhatsApp to Admin (+' + MANAGER_WHATSAPP + ')</a>' +
-    '</div>';
-
-  // Compact CSS block — replaces hundreds of repeated inline styles per row
-  var css = '<style>' +
-    'body{font-family:Arial,Helvetica,sans-serif;max-width:1100px;margin:0 auto;padding:8px;color:#1f2937}' +
-    'h1{color:#1f2937;margin:0 0 4px 0;font-size:22px}' +
-    'h2.s-h2{padding-bottom:6px;margin-top:26px;font-size:18px;border-bottom:2px solid #d1d5db}' +
-    'h2.s-h2-purple{color:#4c1d95;border-color:#7c3aed}' +
-    'h2.s-h2-grey{color:#374151;border-color:#6b7280}' +
-    'h2.s-h2-green{color:#065f46;border-color:#059669}' +
-    'h3{margin:10px 0 4px 0;font-size:15px}' +
-    'h3.s-h-red{color:#dc2626}' +
-    'h3.s-h-blue{color:#4a90d9}' +
-    '.s-date{color:#6b7280;margin:0 0 12px 0}' +
-    '.s-summary{background:#f3f4f6;padding:12px;border-radius:6px;margin:10px 0;font-size:13px}' +
-    '.s-note{color:#6b7280;font-size:12px;margin:6px 0}' +
-    '.s-warn{background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;padding:12px;margin-top:16px}' +
-    '.s-warn strong{color:#92400e}' +
-    '.s-warn span{color:#78350f}' +
-    '.s-mgr{border:1px solid #ddd6fe;background:#faf5ff;padding:12px;border-radius:8px;margin-top:12px}' +
-    '.s-mgr-head{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}' +
-    '.s-mgr-head h3{margin:0;color:#4c1d95}' +
-    '.s-badges{font-size:12px}' +
-    '.s-bd-red{background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:8px;margin-right:4px}' +
-    '.s-bd-blue{background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:8px;margin-right:4px}' +
-    'table.s-t{border-collapse:collapse;width:100%;margin-top:4px;font-size:12px}' +
-    'table.s-t th,table.s-t td{border:1px solid #ddd;padding:5px 8px;text-align:left}' +
-    'table.s-t thead th{color:#fff}' +
-    'table.s-t-red thead th{background:#dc2626}' +
-    'table.s-t-blue thead th{background:#4a90d9}' +
-    'table.s-t td.s-num{text-align:right}' +
-    'table.s-t td.s-ov{color:#dc2626;font-weight:600}' +
-    'a.s-btn{display:inline-block;text-decoration:none;color:#fff;background:#25D366;padding:9px 18px;border-radius:5px;font-weight:bold;font-size:13px;margin-top:10px}' +
-    'a.s-btn-wa-big{padding:14px 28px;font-size:15px}' +
-    '.s-adm-box{margin-top:14px;padding:14px;background:#ecfdf5;border-radius:6px}' +
-    '.s-foot{color:#888;font-size:11px;margin-top:26px;border-top:1px solid #e5e7eb;padding-top:10px}' +
-    '</style>';
-
-  var emailBody = '<!DOCTYPE html><html><head>' + css + '</head><body>' +
-    '<h1>📞 Daily Payment Follow-Up</h1>' +
-    '<p class="s-date"><strong>Date:</strong> ' + formattedToday + '</p>' +
-    sections +
-    '<p class="s-foot">💡 Every WhatsApp button opens a pre-filled message. You then press send inside WhatsApp — nothing goes out automatically.</p>' +
+  var emailBody = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;color:#1f2937;">' +
+    '<h2 style="margin-bottom:6px;">📞 Daily Payment Summary</h2>' +
+    '<p style="margin:0 0 10px;"><strong>Date:</strong> ' + formattedToday + '</p>' +
+    '<p style="background:#f3f4f6;padding:10px;border-radius:6px;font-size:13px;">' +
+      'Overdue: <strong>' + overdue.length + '</strong> (₹' + formatINR(totalOverdueAmt) + ') &nbsp;|&nbsp; ' +
+      'Due Today: <strong>' + dueToday.length + '</strong> (₹' + formatINR(totalDueTodayAmt) + ') &nbsp;|&nbsp; ' +
+      'Total: <strong>₹' + formatINR(totalOverdueAmt + totalDueTodayAmt) + '</strong>' +
+    '</p>' +
+    compactListHtml('🚨 Overdue', overdue, '#dc2626') +
+    compactListHtml('📅 Due Today', dueToday, '#1d4ed8') +
+    '<p style="font-size:11px;color:#6b7280;margin-top:12px;">Email trimmed to customer-wise totals for delivery reliability.</p>' +
     '</body></html>';
 
-  var subject = '📞 ' + totalCount + ' Payment(s) — ' + overdue.length + ' Overdue, ' + dueToday.length + ' Due Today — ' + formattedToday;
+  var subject = '📞 ' + totalCount + ' Customer Due — ' + overdue.length + ' Overdue, ' + dueToday.length + ' Due Today — ' + formattedToday;
 
   MailApp.sendEmail(
     MANAGER_EMAIL,
     subject,
-    'Open this email in HTML mode for full details.',
+    'Daily Payment Summary: customer name and amount due.',
     { htmlBody: emailBody }
   );
 
-  Logger.log('Consolidated reminder sent: ' + overdue.length + ' overdue, ' + dueToday.length + ' due today, ' + managerKeys.length + ' manager blocks, ' + (unassigned.overdue.length + unassigned.dueToday.length) + ' unassigned.');
-  if (managerKeys.length === 0) {
-    Logger.log('⚠ Note: No managers were assigned to any row. Email contains only the Full List, no per-manager bifurcation. Assign managers via Records tab in the web app to enable this.');
-  }
+  Logger.log('Compact reminder sent: ' + overdue.length + ' overdue clients, ' + dueToday.length + ' due-today clients.');
 }
 
 // ============================================================

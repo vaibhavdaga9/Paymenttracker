@@ -253,6 +253,13 @@
         </div>
       </div>
 
+      <div class="bill-select-controls" style="margin-bottom:12px;">
+        <button class="btn btn-outline btn-sm" onclick="selectAllVisibleRecords()">✓ Select All (Filtered)</button>
+        <button class="btn btn-outline btn-sm" onclick="clearSelectedRecords()">✕ Clear Selection</button>
+        <button class="btn btn-success btn-sm" onclick="markSelectedRecordsReceived()">✓ Mark Received (Selected)</button>
+        <span id="rec_selected_count" style="font-size:12px; color:#374151; align-self:center;">0 selected</span>
+      </div>
+
       <div id="records_table_container"></div>
     </div>
 
@@ -932,6 +939,7 @@
     // RECORDS VIEW
     // ============================================================
     var allRecordsCache = [];
+    var selectedRecordRows = {};
 
 	function loadWhatsAppRecords() {
   showLoading();
@@ -973,6 +981,11 @@ function populateWhatsAppClientDropdown() {
           hideLoading();
           managersCache = (res && res.managers) ? res.managers : [];
           allRecordsCache = (res && res.payments) ? res.payments : [];
+          var validRows = {};
+          allRecordsCache.forEach(function(p) { validRows[p.rowIndex] = true; });
+          Object.keys(selectedRecordRows).forEach(function(k) {
+            if (!validRows[Number(k)]) delete selectedRecordRows[k];
+          });
           populateWhatsAppClientDropdown();
           applyRecordsFilter();
         })
@@ -1018,6 +1031,7 @@ function populateWhatsAppClientDropdown() {
       var container = document.getElementById('records_table_container');
       if (!payments || payments.length === 0) {
         container.innerHTML = '<div class="empty-state">No payment records match the current filters.</div>';
+        updateSelectedRecordCount();
         return;
       }
 
@@ -1025,15 +1039,17 @@ function populateWhatsAppClientDropdown() {
       var mgrNames = managersCache.map(function(m) { return m.name; });
 
       var html = '<table class="customer-list-table"><thead><tr>' +
-        '<th>Invoice Date</th><th>Client Name</th><th>Mobile</th><th>Amount</th>' +
+        '<th>Select</th><th>Invoice Date</th><th>Client Name</th><th>Mobile</th><th>Amount</th>' +
         '<th>Manager</th><th>Remarks</th><th>Action</th>' +
         '</tr></thead><tbody>';
 
       payments.forEach(function(p) {
+        var clientNameEscaped = String(p.clientName || '').replace(/'/g, "\\'");
+        var isChecked = !!selectedRecordRows[p.rowIndex];
         var mobileHtml =
           '<div style="display:flex; gap:4px; align-items:center;">' +
             '<input type="text" id="mobile_input_' + p.rowIndex + '" value="' + escapeHtml(p.mobile || '') + '" maxlength="10" placeholder="Mobile" style="padding:5px 6px; font-size:11px; width:100px;" data-testid="rec-mobile-input-' + p.rowIndex + '" />' +
-            '<button class="btn btn-outline btn-sm" onclick="updateClientMobile(' + p.rowIndex + ', \'' + p.clientName.replace(/'/g, "\\'") + '\')" data-testid="rec-update-mobile-' + p.rowIndex + '" title="Update mobile for all invoices of this client">💾</button>' +
+            '<button class="btn btn-outline btn-sm" onclick="updateClientMobile(' + p.rowIndex + ', \'' + clientNameEscaped + '\')" data-testid="rec-update-mobile-' + p.rowIndex + '" title="Update mobile for all invoices of this client">💾</button>' +
           '</div>';
 
         // Manager dropdown — options with correct `selected` per row
@@ -1061,8 +1077,9 @@ function populateWhatsAppClientDropdown() {
           '</div>';
 
         html += '<tr>' +
+          '<td><input type="checkbox" id="rec_select_' + p.rowIndex + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleRecordSelection(' + p.rowIndex + ', this.checked)" /></td>' +
           '<td>' + (p.date || '-') + '</td>' +
-          '<td><strong>' + escapeHtml(p.clientName || '') + '</strong></td>' +
+          '<td><strong>' + escapeHtml(p.clientName || '') + '</strong> <button class="btn btn-outline btn-sm" style="margin-left:6px;" onclick="selectClientRecords(\'' + clientNameEscaped + '\')">Select All</button></td>' +
           '<td>' + mobileHtml + '</td>' +
           '<td>' + formatCurrency(p.amount) + '</td>' +
           '<td>' + mgrSelectHtml + '</td>' +
@@ -1073,6 +1090,83 @@ function populateWhatsAppClientDropdown() {
 
       html += '</tbody></table>';
       container.innerHTML = html;
+      updateSelectedRecordCount();
+    }
+
+    function toggleRecordSelection(rowIndex, checked) {
+      if (checked) selectedRecordRows[rowIndex] = true;
+      else delete selectedRecordRows[rowIndex];
+      updateSelectedRecordCount();
+    }
+
+    function updateSelectedRecordCount() {
+      var el = document.getElementById('rec_selected_count');
+      if (!el) return;
+      var count = Object.keys(selectedRecordRows).length;
+      el.textContent = count + ' selected';
+    }
+
+    function selectAllVisibleRecords() {
+      var fromVal = document.getElementById('rec_from_date').value;
+      var toVal = document.getElementById('rec_to_date').value;
+      var searchVal = (document.getElementById('rec_search').value || '').trim().toLowerCase();
+      var fromDate = fromVal ? new Date(fromVal) : null;
+      var toDate = toVal ? new Date(toVal) : null;
+      if (toDate) toDate.setHours(23, 59, 59, 999);
+
+      allRecordsCache.forEach(function(p) {
+        if (searchVal && String(p.clientName || '').toLowerCase().indexOf(searchVal) === -1) return;
+        if (fromDate || toDate) {
+          if (!p.date) return;
+          var pDate = new Date(p.date);
+          if (isNaN(pDate.getTime())) return;
+          if (fromDate && pDate < fromDate) return;
+          if (toDate && pDate > toDate) return;
+        }
+        selectedRecordRows[p.rowIndex] = true;
+      });
+      applyRecordsFilter();
+    }
+
+    function clearSelectedRecords() {
+      selectedRecordRows = {};
+      applyRecordsFilter();
+    }
+
+    function selectClientRecords(clientName) {
+      allRecordsCache.forEach(function(p) {
+        if (String(p.clientName || '').toUpperCase() === String(clientName || '').toUpperCase()) {
+          selectedRecordRows[p.rowIndex] = true;
+        }
+      });
+      applyRecordsFilter();
+    }
+
+    function markSelectedRecordsReceived() {
+      var rows = Object.keys(selectedRecordRows).map(function(k) { return Number(k); }).filter(function(v) { return !isNaN(v); });
+      if (!rows.length) {
+        alert('Select at least one invoice.');
+        return;
+      }
+      if (!confirm('Mark ' + rows.length + ' selected invoice(s) as Received? This will PERMANENTLY DELETE them from the sheet.')) return;
+
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res && res.success) {
+            selectedRecordRows = {};
+            scheduleGroupsCache = [];
+            loadRecords();
+          } else {
+            alert('Error: ' + ((res && res.message) || 'Unable to mark selected records as received'));
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('Error: ' + err.message);
+        })
+        .markPaymentsReceivedBulk(rows);
     }
 
     function updateManager(rowIndex, managerName) {
@@ -1133,6 +1227,7 @@ function populateWhatsAppClientDropdown() {
                 }
               }
             }
+            delete selectedRecordRows[rowIndex];
             scheduleGroupsCache = [];
             applyRecordsFilter();
           } else {
