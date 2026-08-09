@@ -1422,13 +1422,26 @@ function sendWhatsAppReminder() {
     return;
   }
 
+  var MAX_EMAIL_ROWS_PER_SECTION = 80;
+  var reportSheetUrl = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/edit#gid=0';
+  var deployedWebAppUrl = '';
+  try {
+    deployedWebAppUrl = ScriptApp.getService().getUrl() || '';
+  } catch (e) {}
+
   var compactListHtml = function(title, items, color) {
     if (!items.length) return '';
-    var rows = items.map(function(item) {
+    var shown = items.slice(0, MAX_EMAIL_ROWS_PER_SECTION);
+    var hiddenCount = items.length - shown.length;
+    var rows = shown.map(function(item) {
       return '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + item.client + '</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">₹' + formatINR(item.amount) + '</td></tr>';
     }).join('');
+    var hiddenLine = hiddenCount > 0
+      ? '<p style="margin:8px 0 0;color:#6b7280;font-size:12px;">Showing first ' + shown.length + ' of ' + items.length + ' customers. ' + hiddenCount + ' hidden.</p>'
+      : '';
     return '<h3 style="margin:16px 0 8px;color:' + color + ';">' + title + ' (' + items.length + ')</h3>' +
-      '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:6px 8px;background:#f9fafb;">Customer</th><th style="text-align:right;padding:6px 8px;background:#f9fafb;">Amount Due</th></tr></thead><tbody>' + rows + '</tbody></table>';
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:6px 8px;background:#f9fafb;">Customer</th><th style="text-align:right;padding:6px 8px;background:#f9fafb;">Amount Due</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      hiddenLine;
   };
 
   var emailBody = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;color:#1f2937;">' +
@@ -1441,14 +1454,30 @@ function sendWhatsAppReminder() {
     '</p>' +
     compactListHtml('🚨 Overdue', overdue, '#dc2626') +
     compactListHtml('📅 Due Today', dueToday, '#1d4ed8') +
-    '<p style="font-size:11px;color:#6b7280;margin-top:12px;">Email trimmed to customer-wise totals for delivery reliability.</p>' +
+    '<div style="margin-top:14px;padding:10px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa;font-size:12px;color:#374151;">' +
+      '<p style="margin:0 0 6px;"><strong>Full report links:</strong></p>' +
+      '<p style="margin:0 0 4px;"><a href="' + reportSheetUrl + '">Open complete data in Google Sheet</a></p>' +
+      (deployedWebAppUrl ? ('<p style="margin:0;"><a href="' + deployedWebAppUrl + '">Open full Payment Tracker dashboard</a></p>') : '') +
+    '</div>' +
+    '<p style="font-size:11px;color:#6b7280;margin-top:12px;">Email list is intentionally trimmed for delivery reliability.</p>' +
     '</body></html>';
+  var toLimitedTextLines = function(title, items) {
+    if (!items.length) return '';
+    var shown = items.slice(0, MAX_EMAIL_ROWS_PER_SECTION);
+    var lines = shown.map(function(e) { return '- ' + e.client + ': ₹' + formatINR(e.amount); }).join('\n');
+    var hiddenCount = items.length - shown.length;
+    var hiddenLine = hiddenCount > 0 ? ('\n... ' + hiddenCount + ' more hidden (open full report link).') : '';
+    return title + ':\n' + lines + hiddenLine;
+  };
   var textBody = 'Daily Payment Summary - ' + formattedToday + '\n' +
     'Overdue: ' + overdue.length + ' (₹' + formatINR(totalOverdueAmt) + ')\n' +
     'Due Today: ' + dueToday.length + ' (₹' + formatINR(totalDueTodayAmt) + ')\n' +
     'Total: ₹' + formatINR(totalOverdueAmt + totalDueTodayAmt) + '\n\n' +
-    (overdue.length ? ('Overdue:\n' + overdue.map(function(e) { return '- ' + e.client + ': ₹' + formatINR(e.amount); }).join('\n') + '\n\n') : '') +
-    (dueToday.length ? ('Due Today:\n' + dueToday.map(function(e) { return '- ' + e.client + ': ₹' + formatINR(e.amount); }).join('\n')) : '');
+    (overdue.length ? (toLimitedTextLines('Overdue', overdue) + '\n\n') : '') +
+    (dueToday.length ? (toLimitedTextLines('Due Today', dueToday) + '\n\n') : '') +
+    'Full report:\n' +
+    '- Google Sheet: ' + reportSheetUrl + '\n' +
+    (deployedWebAppUrl ? ('- Dashboard: ' + deployedWebAppUrl + '\n') : '');
 
   var subject = '📞 ' + totalCount + ' Customer' + (totalCount === 1 ? '' : 's') + ' Due — ' + overdue.length + ' Overdue, ' + dueToday.length + ' Due Today — ' + formattedToday;
 
