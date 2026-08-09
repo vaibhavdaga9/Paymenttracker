@@ -79,14 +79,27 @@ async function fetchPendingWithRetry(options) {
 
   try {
     var url = apiUrl + '?action=customer_by_mobile&mobile=' + encodeURIComponent(mobile);
-    var res = await fetch(url, { redirect: 'follow' });
-    var text = await res.text();
-    var data;
-    try { data = JSON.parse(text); } catch(parseErr) {
-      setStatus('API response is not JSON. Check your Apps Script URL is the /exec deployment URL.', true);
+    var result = await new Promise(function(resolve, reject) {
+      chrome.runtime.sendMessage({ type: 'FETCH_API', url: url }, function(response) {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+
+    if (token !== activeFetchToken) return;
+
+    if (result.error === 'NOT_JSON') {
+      setStatus('API did not return JSON. Make sure the URL ends in /exec (deployment URL, not editor URL).', true);
       return;
     }
-    if (token !== activeFetchToken) return;
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    var data = result.data;
     if (!data.success) {
       if (attempt < retries) {
         setStatus('Retrying... (' + (attempt + 1) + '/' + retries + ')', false);
