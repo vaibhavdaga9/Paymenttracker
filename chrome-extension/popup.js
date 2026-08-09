@@ -25,6 +25,32 @@ function setDetectedInfo() {
   info.textContent = detectedPhone ? ('Detected from WhatsApp: ' + detectedPhone) : 'No number detected yet.';
 }
 
+function applyDetectedPhone(phone, shouldAutoFetch) {
+  var normalized = normalizePhone(phone || '');
+  if (!normalized) return false;
+  detectedPhone = normalized;
+  document.getElementById('mobileInput').value = detectedPhone;
+  if (shouldAutoFetch !== false) {
+    scheduleAutoFetchForDetectedPhone();
+  }
+  setDetectedInfo();
+  return true;
+}
+
+function requestDetectedPhoneFromActiveTab() {
+  if (!chrome.tabs || !chrome.tabs.query) return;
+  chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+    if (chrome.runtime.lastError) return;
+    var tab = tabs && tabs[0];
+    if (!tab || !tab.id) return;
+    if (!tab.url || tab.url.indexOf('https://web.whatsapp.com/') !== 0) return;
+    chrome.tabs.sendMessage(tab.id, { type: 'GET_PHONE_NOW' }, function(response) {
+      if (chrome.runtime.lastError || !response) return;
+      applyDetectedPhone(response.phone, true);
+    });
+  });
+}
+
 function renderBills(bills) {
   var container = document.getElementById('bills');
   if (!bills || bills.length === 0) {
@@ -194,22 +220,14 @@ function scheduleAutoFetchForDetectedPhone() {
 function boot() {
   chrome.storage.local.get(['appsScriptApiUrl', 'lastDetectedPhone'], function(data) {
     document.getElementById('apiUrl').value = data.appsScriptApiUrl || '';
-    detectedPhone = normalizePhone(data.lastDetectedPhone || '');
-    if (detectedPhone) {
-      document.getElementById('mobileInput').value = detectedPhone;
-      scheduleAutoFetchForDetectedPhone();
-    }
+    applyDetectedPhone(data.lastDetectedPhone || '', true);
     setDetectedInfo();
+    requestDetectedPhoneFromActiveTab();
   });
 
   chrome.runtime.onMessage.addListener(function(message) {
     if (!message || message.type !== 'PHONE_UPDATED') return;
-    detectedPhone = normalizePhone(message.phone || '');
-    if (detectedPhone) {
-      document.getElementById('mobileInput').value = detectedPhone;
-      scheduleAutoFetchForDetectedPhone();
-    }
-    setDetectedInfo();
+    applyDetectedPhone(message.phone || '', true);
   });
 
   document.getElementById('saveApiBtn').addEventListener('click', saveApiUrl);

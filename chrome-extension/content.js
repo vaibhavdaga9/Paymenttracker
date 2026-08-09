@@ -141,6 +141,12 @@
     });
   }
 
+  function getCurrentDetectedPhone() {
+    var found = detectPhone();
+    if (!found || !found.phone) return { phone: '', source: '' };
+    return { phone: found.phone, source: found.source };
+  }
+
   function scheduleDetect(delayMs) {
     if (detectDebounceTimer) clearTimeout(detectDebounceTimer);
     detectDebounceTimer = setTimeout(sendIfChanged, delayMs || 250);
@@ -175,5 +181,19 @@
 
   window.addEventListener('popstate', function() {
     handleChatInteraction();
+  });
+
+  chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+    if (!message || message.type !== 'GET_PHONE_NOW') return;
+    var current = getCurrentDetectedPhone();
+    if (current.phone && current.phone !== lastSentPhone) {
+      lastSentPhone = current.phone;
+      chrome.runtime.sendMessage({
+        type: 'PHONE_DETECTED',
+        phone: current.phone,
+        source: current.source
+      });
+    }
+    sendResponse(current);
   });
 })();
