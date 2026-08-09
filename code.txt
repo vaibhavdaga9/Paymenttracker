@@ -1009,7 +1009,7 @@ function savePayment(data) {
       data.dateGiven,
       data.nextCallDate,
       'Pending',
-      '',
+      data.manager ? String(data.manager).trim() : '',
       customerId,
       ''
     ]);
@@ -1364,10 +1364,24 @@ function sendWhatsAppReminder() {
   var today = new Date();
   var todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   var todayStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var managerMobileByName = {};
+  getManagers().forEach(function(m) {
+    var nm = m && m.name ? String(m.name).trim() : '';
+    if (!nm) return;
+    managerMobileByName[nm.toUpperCase()] = String(m.mobile || '').replace(/\D/g, '');
+  });
 
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PAYMENT_TOTAL_COLUMNS).getValues();
   var overdueByClient = {};
   var dueTodayByClient = {};
+  var managerBuckets = {};
+
+  var addClientSummary_ = function(store, clientName, amount) {
+    var ck = String(clientName || '').trim().toUpperCase();
+    if (!ck) return;
+    if (!store[ck]) store[ck] = { client: clientName, amount: 0 };
+    store[ck].amount += amount;
+  };
 
   data.forEach(function(row) {
     if (!row[6]) return; // no Next Call Date
@@ -1383,13 +1397,26 @@ function sendWhatsAppReminder() {
     var amount = Number(row[3]) || 0;
     if (amount <= 0) return;
     var key = client.toUpperCase();
+    var managerName = row[8] ? String(row[8]).trim() : '';
+    if (!managerName) managerName = 'Unassigned';
+    var managerKey = managerName.toUpperCase();
+    if (!managerBuckets[managerKey]) {
+      managerBuckets[managerKey] = {
+        name: managerName,
+        mobile: managerMobileByName[managerKey] || '',
+        overdueByClient: {},
+        dueTodayByClient: {}
+      };
+    }
 
     if (ncdMidnight.getTime() < todayMidnight.getTime()) {
       if (!overdueByClient[key]) overdueByClient[key] = { client: client, amount: 0 };
       overdueByClient[key].amount += amount;
+      addClientSummary_(managerBuckets[managerKey].overdueByClient, client, amount);
     } else if (ncdStr === todayStr) {
       if (!dueTodayByClient[key]) dueTodayByClient[key] = { client: client, amount: 0 };
       dueTodayByClient[key].amount += amount;
+      addClientSummary_(managerBuckets[managerKey].dueTodayByClient, client, amount);
     }
   });
 
@@ -1405,6 +1432,26 @@ function sendWhatsAppReminder() {
   var totalOverdueAmt = overdue.reduce(function(s, e) { return s + e.amount; }, 0);
   var totalDueTodayAmt = dueToday.reduce(function(s, e) { return s + e.amount; }, 0);
   var totalCount = overdue.length + dueToday.length;
+  var managerCards = Object.keys(managerBuckets).map(function(k) {
+    var bucket = managerBuckets[k];
+    var mgrOverdue = Object.keys(bucket.overdueByClient).map(function(ck) { return bucket.overdueByClient[ck]; }).sort(alphaSort);
+    var mgrDueToday = Object.keys(bucket.dueTodayByClient).map(function(ck) { return bucket.dueTodayByClient[ck]; }).sort(alphaSort);
+    var ovAmt = mgrOverdue.reduce(function(s, e) { return s + e.amount; }, 0);
+    var dtAmt = mgrDueToday.reduce(function(s, e) { return s + e.amount; }, 0);
+    return {
+      name: bucket.name,
+      mobile: bucket.mobile || '',
+      overdue: mgrOverdue,
+      dueToday: mgrDueToday,
+      overdueAmount: ovAmt,
+      dueTodayAmount: dtAmt,
+      totalAmount: ovAmt + dtAmt
+    };
+  }).filter(function(card) {
+    return card.overdue.length || card.dueToday.length;
+  }).sort(function(a, b) {
+    return String(a.name || '').toUpperCase().localeCompare(String(b.name || '').toUpperCase());
+  });
 
   if (totalCount === 0) {
     var clearBody = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:700px;">' +
@@ -1423,11 +1470,42 @@ function sendWhatsAppReminder() {
   }
 
   var MAX_EMAIL_ROWS_PER_SECTION = 80;
+  var MAX_WA_ITEMS_PER_SECTION = 60;
   var reportSheetUrl = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/edit#gid=0';
   var deployedWebAppUrl = '';
   try {
     deployedWebAppUrl = ScriptApp.getService().getUrl() || '';
   } catch (e) {}
+  var toWaNumber_ = function(rawMobile) {
+    var digits = String(rawMobile || '').replace(/\D/g, '');
+    if (digits.length === 10) return '91' + digits;
+    if (digits.length === 12 && digits.indexOf('91') === 0) return digits;
+    return digits;
+  };
+  var buildManagerWaLink_ = function(card) {
+    var lines = [
+      '📞 *Payment Follow-Up — ' + formattedToday + '*',
+      '👤 ' + card.name,
+      '━━━━━━━━━━━━━━━━━━━━━━━',
+      ''
+    ];
+    var appendSection_ = function(title, rows) {
+      if (!rows.length) return;
+      var shown = rows.slice(0, MAX_WA_ITEMS_PER_SECTION);
+      lines.push(title + ' (' + rows.length + ')');
+      shown.forEach(function(item, idx) {
+        lines.push((idx + 1) + '. ' + item.client + ' — ₹' + formatINR(item.amount));
+      });
+      if (rows.length > shown.length) {
+        lines.push('... ' + (rows.length - shown.length) + ' more hidden in WhatsApp preview.');
+      }
+      lines.push('');
+    };
+    appendSection_('🚨 OVERDUE', card.overdue);
+    appendSection_('📅 DUE TODAY', card.dueToday);
+    lines.push('TOTAL TO COLLECT: ₹' + formatINR(card.totalAmount));
+    return 'https://wa.me/' + toWaNumber_(card.mobile) + '?text=' + encodeURIComponent(lines.join('\n'));
+  };
 
   var compactListHtml = function(title, items, color) {
     if (!items.length) return '';
@@ -1443,6 +1521,20 @@ function sendWhatsAppReminder() {
       '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:6px 8px;background:#f9fafb;">Customer</th><th style="text-align:right;padding:6px 8px;background:#f9fafb;">Amount Due</th></tr></thead><tbody>' + rows + '</tbody></table>' +
       hiddenLine;
   };
+  var managerRowsHtml = managerCards.map(function(card) {
+    var actionCell = card.mobile
+      ? ('<a href="' + buildManagerWaLink_(card) + '" style="display:inline-block;padding:6px 10px;border-radius:6px;background:#16a34a;color:#fff;text-decoration:none;font-size:12px;">📱 Send WhatsApp</a>')
+      : '<span style="color:#b45309;font-size:12px;">No mobile in Managers sheet</span>';
+    return '<tr>' +
+      '<td style="padding:8px;border-bottom:1px solid #eee;"><strong>' + card.name + '</strong></td>' +
+      '<td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">' + card.overdue.length + '</td>' +
+      '<td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">₹' + formatINR(card.overdueAmount) + '</td>' +
+      '<td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">' + card.dueToday.length + '</td>' +
+      '<td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">₹' + formatINR(card.dueTodayAmount) + '</td>' +
+      '<td style="padding:8px;border-bottom:1px solid #eee;text-align:right;"><strong>₹' + formatINR(card.totalAmount) + '</strong></td>' +
+      '<td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">' + actionCell + '</td>' +
+      '</tr>';
+  }).join('');
 
   var emailBody = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;color:#1f2937;">' +
     '<h2 style="margin-bottom:6px;">📞 Daily Payment Summary</h2>' +
@@ -1452,6 +1544,19 @@ function sendWhatsAppReminder() {
       'Due Today: <strong>' + dueToday.length + '</strong> (₹' + formatINR(totalDueTodayAmt) + ') &nbsp;|&nbsp; ' +
       'Total: <strong>₹' + formatINR(totalOverdueAmt + totalDueTodayAmt) + '</strong>' +
     '</p>' +
+    '<h3 style="margin:16px 0 8px;">👥 Manager-wise Follow-up</h3>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+      '<thead><tr>' +
+        '<th style="text-align:left;padding:8px;background:#f9fafb;">Manager</th>' +
+        '<th style="text-align:right;padding:8px;background:#f9fafb;">Overdue</th>' +
+        '<th style="text-align:right;padding:8px;background:#f9fafb;">Overdue ₹</th>' +
+        '<th style="text-align:right;padding:8px;background:#f9fafb;">Due Today</th>' +
+        '<th style="text-align:right;padding:8px;background:#f9fafb;">Due Today ₹</th>' +
+        '<th style="text-align:right;padding:8px;background:#f9fafb;">Total ₹</th>' +
+        '<th style="text-align:center;padding:8px;background:#f9fafb;">Action</th>' +
+      '</tr></thead>' +
+      '<tbody>' + (managerRowsHtml || '<tr><td colspan="7" style="padding:8px;color:#6b7280;">No manager-wise dues found.</td></tr>') + '</tbody>' +
+    '</table>' +
     compactListHtml('🚨 Overdue', overdue, '#dc2626') +
     compactListHtml('📅 Due Today', dueToday, '#1d4ed8') +
     '<div style="margin-top:14px;padding:10px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa;font-size:12px;color:#374151;">' +
@@ -1473,6 +1578,10 @@ function sendWhatsAppReminder() {
     'Overdue: ' + overdue.length + ' (₹' + formatINR(totalOverdueAmt) + ')\n' +
     'Due Today: ' + dueToday.length + ' (₹' + formatINR(totalDueTodayAmt) + ')\n' +
     'Total: ₹' + formatINR(totalOverdueAmt + totalDueTodayAmt) + '\n\n' +
+    (managerCards.length ? ('Manager-wise:\n' + managerCards.map(function(card) {
+      var waHint = card.mobile ? (' | WhatsApp: https://wa.me/' + toWaNumber_(card.mobile)) : ' | WhatsApp: missing manager mobile';
+      return '- ' + card.name + ' | Overdue ' + card.overdue.length + ' (₹' + formatINR(card.overdueAmount) + '), Due Today ' + card.dueToday.length + ' (₹' + formatINR(card.dueTodayAmount) + ')' + waHint;
+    }).join('\n') + '\n\n') : '') +
     (overdue.length ? (toLimitedTextLines('Overdue', overdue) + '\n\n') : '') +
     (dueToday.length ? (toLimitedTextLines('Due Today', dueToday) + '\n\n') : '') +
     'Full report:\n' +
