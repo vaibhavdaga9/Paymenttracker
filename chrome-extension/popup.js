@@ -92,7 +92,7 @@ async function fetchPendingWithRetry(options) {
     if (token !== activeFetchToken) return;
 
     if (result.error === 'NOT_JSON') {
-      setStatus('API did not return JSON. Make sure the URL ends in /exec (deployment URL, not editor URL).', true);
+      setStatus('API error: Response was not JSON. Raw response: ' + (result.text || '(empty)'), true);
       return;
     }
     if (result.error) {
